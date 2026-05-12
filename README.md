@@ -2,19 +2,21 @@
 
 WASM/WebGL2-based Gerber file viewer for PCB visualization.
 
-[website](https://wasm-gerber-viewer.vercel.app/)
+[Website](https://wasm-gerber-viewer.vercel.app/)
 
 ## Features
 
-- High-performance rendering when huge Gerber files(>10MB) are uploaded
+- High-performance rendering for large Gerber files (>10 MB)
 - WebGL2 hardware-accelerated rendering via WASM
 - Touch support for mobile devices
+- Multi-layer rendering with per-layer color and visibility control
+- Drag-and-drop upload and per-file size validation (300MB limit)
 
 ## Limitations
 
-This project focuses on high-performance rendering, but it does not render accurately.
+This project focuses on high-performance rendering, but rendering accuracy is currently limited.
 
-As it is a Work In Progress, some Gerber syntax may not be fully supported.
+As this is a work in progress, some Gerber syntax may not be fully supported.
 
 ## Requirements
 
@@ -39,7 +41,7 @@ Open `http://localhost:8000` and upload Gerber files.
 
 ## Project Structure
 
-```
+```text
 wasm_gerber_viewer/
 ├── index.html                             # Main page
 ├── js/                                    # JavaScript files
@@ -72,7 +74,7 @@ Modern browsers with WebGL2 support:
 
 ## Work in Progress
 
-The following Gerber commands are not yet implemented
+The following Gerber commands are not implemented yet:
 
 - **%AB** - Aperture Block definitions
 - **%LR** - Layer Rotation transformations
