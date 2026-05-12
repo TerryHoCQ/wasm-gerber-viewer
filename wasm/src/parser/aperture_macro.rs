@@ -403,14 +403,9 @@ pub fn parse_primitive_statement(
                 return None;
             }
             let exposure: f32 = evaluate_expression(parts[1], variables).ok()?;
-            let num_vertices: u32 =
-                evaluate_expression(parts[2], variables).ok()? as u32;
+            let num_vertices: u32 = evaluate_expression(parts[2], variables).ok()? as u32;
             let rotation: f32 = if parts.len() > 3 + (num_vertices as usize) * 2 {
-                evaluate_expression(
-                    parts[3 + (num_vertices as usize) * 2],
-                    variables,
-                )
-                .ok()?
+                evaluate_expression(parts[3 + (num_vertices as usize) * 2], variables).ok()?
                     * (std::f32::consts::PI / 180.0) // degrees to radians
             } else {
                 0.0
@@ -459,14 +454,12 @@ pub fn parse_primitive_statement(
                 return None;
             }
             let exposure: f32 = evaluate_expression(parts[1], variables).ok()?;
-            let num_vertices: u32 =
-                evaluate_expression(parts[2], variables).ok()? as u32;
+            let num_vertices: u32 = evaluate_expression(parts[2], variables).ok()? as u32;
             let center_x: f32 = evaluate_expression(parts[3], variables).ok()?;
             let center_y: f32 = evaluate_expression(parts[4], variables).ok()?;
             let diameter: f32 = evaluate_expression(parts[5], variables).ok()?;
             let rotation: f32 = if parts.len() > 6 {
-                evaluate_expression(parts[6], variables).ok()?
-                    * (std::f32::consts::PI / 180.0)
+                evaluate_expression(parts[6], variables).ok()? * (std::f32::consts::PI / 180.0)
             // degrees to radians
             } else {
                 0.0
@@ -517,15 +510,11 @@ pub fn parse_primitive_statement(
             }
             let center_x: f32 = evaluate_expression(parts[1], variables).ok()?;
             let center_y: f32 = evaluate_expression(parts[2], variables).ok()?;
-            let outer_diameter: f32 =
-                evaluate_expression(parts[3], variables).ok()?;
-            let inner_diameter: f32 =
-                evaluate_expression(parts[4], variables).ok()?;
-            let gap_thickness: f32 =
-                evaluate_expression(parts[5], variables).ok()?;
+            let outer_diameter: f32 = evaluate_expression(parts[3], variables).ok()?;
+            let inner_diameter: f32 = evaluate_expression(parts[4], variables).ok()?;
+            let gap_thickness: f32 = evaluate_expression(parts[5], variables).ok()?;
             let rotation: f32 = if parts.len() > 6 {
-                evaluate_expression(parts[6], variables).ok()?
-                    * (std::f32::consts::PI / 180.0)
+                evaluate_expression(parts[6], variables).ok()? * (std::f32::consts::PI / 180.0)
             } else {
                 0.0
             };
@@ -554,8 +543,7 @@ pub fn parse_primitive_statement(
             let end_x: f32 = evaluate_expression(parts[5], variables).ok()?;
             let end_y: f32 = evaluate_expression(parts[6], variables).ok()?;
             let rotation: f32 = if parts.len() > 7 {
-                evaluate_expression(parts[7], variables).ok()?
-                    * (std::f32::consts::PI / 180.0)
+                evaluate_expression(parts[7], variables).ok()? * (std::f32::consts::PI / 180.0)
             // degrees to radians
             } else {
                 0.0

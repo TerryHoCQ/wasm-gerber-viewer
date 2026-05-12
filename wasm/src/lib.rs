@@ -21,7 +21,6 @@ pub fn init_panic_hook() {
 pub struct GerberProcessor {
     gl: Option<WebGl2RenderingContext>,
     renderer: Option<Renderer>,
-    next_layer_id: u32, // Layer ID generator
 }
 
 #[wasm_bindgen]
@@ -73,7 +72,6 @@ impl GerberProcessor {
         // Add to renderer
         if let Some(renderer) = &mut self.renderer {
             let layer_index = renderer.add_layer(non_empty_layers)?;
-            self.next_layer_id += 1;
 
             // For now, layer_id matches layer_index
             // In a more complex implementation, we could maintain a mapping
@@ -110,7 +108,6 @@ impl GerberProcessor {
     pub fn clear(&mut self) -> Result<String, JsValue> {
         if let Some(renderer) = &mut self.renderer {
             renderer.clear_all();
-            self.next_layer_id = 0;
             Ok("clear_done".to_string())
         } else {
             Err(JsValue::from_str(
@@ -188,6 +185,17 @@ impl GerberProcessor {
         } else {
             Err(JsValue::from_str(
                 "No data available. Call parse() first to parse Gerber content.",
+            ))
+        }
+    }
+
+    /// Get the boundary of one parsed user layer.
+    pub fn get_layer_boundary(&self, layer_id: u32) -> Result<Boundary, JsValue> {
+        if let Some(renderer) = &self.renderer {
+            renderer.get_layer_boundary(layer_id as usize)
+        } else {
+            Err(JsValue::from_str(
+                "No data available. Call add_layer() first to parse Gerber content.",
             ))
         }
     }

@@ -10,19 +10,19 @@ use std::collections::HashMap;
 pub enum Primitive {
     Triangle {
         vertices: [[f32; 2]; 3], // Changed from Vec to fixed array
-        exposure: f32, // 1.0 = positive, 0.0 = negative
-        hole_x: f32,   // Hole center X (relative to triangle)
-        hole_y: f32,   // Hole center Y (relative to triangle)
-        hole_radius: f32, // Hole radius (0.0 = no hole)
+        exposure: f32,           // 1.0 = positive, 0.0 = negative
+        hole_x: f32,             // Hole center X (relative to triangle)
+        hole_y: f32,             // Hole center Y (relative to triangle)
+        hole_radius: f32,        // Hole radius (0.0 = no hole)
     },
     Circle {
         x: f32,
         y: f32,
         radius: f32,
-        exposure: f32,     // 1.0 = positive, 0.0 = negative
-        hole_x: f32,       // Hole center X (absolute position)
-        hole_y: f32,       // Hole center Y (absolute position)
-        hole_radius: f32,  // Hole radius (0.0 = no hole)
+        exposure: f32,    // 1.0 = positive, 0.0 = negative
+        hole_x: f32,      // Hole center X (absolute position)
+        hole_y: f32,      // Hole center Y (absolute position)
+        hole_radius: f32, // Hole radius (0.0 = no hole)
     },
     Arc {
         x: f32,
@@ -82,9 +82,7 @@ pub fn scale_primitive(primitive: &mut Primitive, scale: f32) {
             *hole_radius *= scale;
         }
         Primitive::Arc {
-            radius,
-            thickness,
-            ..
+            radius, thickness, ..
         } => {
             *radius *= scale;
             *thickness *= scale;
@@ -572,13 +570,24 @@ fn flash_aperture_no_sr(
             let mut new_primitive = primitive.clone();
             scale_primitive(&mut new_primitive, layer_scale);
             match &mut new_primitive {
-                Primitive::Circle { x: px, y: py, hole_x: hx, hole_y: hy, .. } => {
+                Primitive::Circle {
+                    x: px,
+                    y: py,
+                    hole_x: hx,
+                    hole_y: hy,
+                    ..
+                } => {
                     *px += x;
                     *py += y;
                     *hx += x;
                     *hy += y;
                 }
-                Primitive::Triangle { vertices, hole_x, hole_y, .. } => {
+                Primitive::Triangle {
+                    vertices,
+                    hole_x,
+                    hole_y,
+                    ..
+                } => {
                     for vertex in vertices.iter_mut() {
                         vertex[0] += x;
                         vertex[1] += y;
@@ -660,12 +669,7 @@ pub fn execute_interpolation(
                             // Convert vector line with width of aperture diameter to triangle
                             let diameter = aperture.radius * 2.0 * state.layer_scale;
                             let line_triangles = line_to_triangles(
-                                sr_start_x,
-                                sr_start_y,
-                                sr_end_x,
-                                sr_end_y,
-                                diameter,
-                                1.0,
+                                sr_start_x, sr_start_y, sr_end_x, sr_end_y, diameter, 1.0,
                             );
                             for triangle in line_triangles {
                                 primitives.push(triangle);
@@ -720,11 +724,11 @@ pub fn execute_interpolation(
                                 for &candidate in &candidates {
                                     let cx = candidate.0;
                                     let cy = candidate.1;
-                                    let r1 =
-                                        ((cx - sr_start_x).powi(2) + (cy - sr_start_y).powi(2))
-                                            .sqrt();
-                                    let r2 = ((cx - sr_end_x).powi(2) + (cy - sr_end_y).powi(2))
-                                        .sqrt();
+                                    let r1 = ((cx - sr_start_x).powi(2)
+                                        + (cy - sr_start_y).powi(2))
+                                    .sqrt();
+                                    let r2 =
+                                        ((cx - sr_end_x).powi(2) + (cy - sr_end_y).powi(2)).sqrt();
 
                                     // Check if radii are consistent
                                     if (r1 - r2).abs() < 0.001 {
@@ -874,7 +878,9 @@ pub fn parse_graphic_command(
                                             let offset_y = sy as f32 * state.sr_j;
 
                                             for triangle in &triangles {
-                                                let offset_triangle = offset_primitive_by(triangle, offset_x, offset_y);
+                                                let offset_triangle = offset_primitive_by(
+                                                    triangle, offset_x, offset_y,
+                                                );
                                                 primitives.push(offset_triangle);
                                             }
                                         }
@@ -934,8 +940,9 @@ pub fn parse_graphic_command(
 
     // Process X coordinate
     if let Some(x_val) = x_match.as_ref() {
-        let mut new_x =
-            convert_coordinate(x_val, 'x', &state.format_spec, state.unit_multiplier) * state.scale * state.layer_scale;
+        let mut new_x = convert_coordinate(x_val, 'x', &state.format_spec, state.unit_multiplier)
+            * state.scale
+            * state.layer_scale;
         // Apply X mirroring
         if state.mirror_x {
             new_x = -new_x;
@@ -949,8 +956,9 @@ pub fn parse_graphic_command(
 
     // Process Y coordinate
     if let Some(y_val) = y_match.as_ref() {
-        let mut new_y =
-            convert_coordinate(y_val, 'y', &state.format_spec, state.unit_multiplier) * state.scale * state.layer_scale;
+        let mut new_y = convert_coordinate(y_val, 'y', &state.format_spec, state.unit_multiplier)
+            * state.scale
+            * state.layer_scale;
         // Apply Y mirroring
         if state.mirror_y {
             new_y = -new_y;
@@ -964,8 +972,9 @@ pub fn parse_graphic_command(
 
     // Process I coordinate (arc center X offset)
     if let Some(i_val) = i_match.as_ref() {
-        let mut raw_i =
-            convert_coordinate(i_val, 'x', &state.format_spec, state.unit_multiplier) * state.scale * state.layer_scale;
+        let mut raw_i = convert_coordinate(i_val, 'x', &state.format_spec, state.unit_multiplier)
+            * state.scale
+            * state.layer_scale;
         // Apply X mirroring to I offset
         if state.mirror_x {
             raw_i = -raw_i;
@@ -979,8 +988,9 @@ pub fn parse_graphic_command(
 
     // Process J coordinate (arc center Y offset)
     if let Some(j_val) = j_match.as_ref() {
-        let mut raw_j =
-            convert_coordinate(j_val, 'y', &state.format_spec, state.unit_multiplier) * state.scale * state.layer_scale;
+        let mut raw_j = convert_coordinate(j_val, 'y', &state.format_spec, state.unit_multiplier)
+            * state.scale
+            * state.layer_scale;
         // Apply Y mirroring to J offset
         if state.mirror_y {
             raw_j = -raw_j;
@@ -1015,20 +1025,23 @@ pub fn parse_graphic_command(
                     state.pen_state = "up".to_string();
 
                     // Movement is also handled in Region mode
-                    if state.region_mode && !region_contours.is_empty() {
-                        // D02 starts a new contour (which can be a hole)
-                        let last_contour = region_contours.last_mut().unwrap();
-                        if !last_contour.is_empty() {
-                            // If the current contour is not empty, add a new one
+                    if state.region_mode {
+                        // D02 starts a new contour and is the first vertex of it.
+                        if region_contours
+                            .last()
+                            .is_none_or(|last_contour| !last_contour.is_empty())
+                        {
                             region_contours.push(Vec::new());
+                        }
+
+                        if let Some(last_contour) = region_contours.last_mut() {
+                            last_contour.push([x, y]);
                         }
                     }
                 }
-                3 => {
+                3 if !state.region_mode => {
                     // D03: Flash aperture at current position
-                    if !state.region_mode {
-                        flash_aperture(state, apertures, primitives, x, y);
-                    }
+                    flash_aperture(state, apertures, primitives, x, y);
                 }
                 10..=9999 => {
                     // D10+: Aperture selection

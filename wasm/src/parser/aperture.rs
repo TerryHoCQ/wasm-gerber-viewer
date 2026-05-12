@@ -70,7 +70,9 @@ pub fn parse_aperture(
                 if let Ok(diameter) = params[0].trim().parse::<f32>() {
                     let diameter_mm = diameter * unit_multiplier * layer_scale;
                     let hole_diameter_mm = if params.len() > 1 {
-                        params[1].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier * layer_scale
+                        params[1].trim().parse::<f32>().unwrap_or(0.0)
+                            * unit_multiplier
+                            * layer_scale
                     } else {
                         0.0
                     };
@@ -100,7 +102,9 @@ pub fn parse_aperture(
                         let width_mm = width * unit_multiplier * layer_scale;
                         let height_mm = height * unit_multiplier * layer_scale;
                         let hole_diameter_mm = if params.len() > 2 {
-                            params[2].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier * layer_scale
+                            params[2].trim().parse::<f32>().unwrap_or(0.0)
+                                * unit_multiplier
+                                * layer_scale
                         } else {
                             0.0
                         };
@@ -145,7 +149,9 @@ pub fn parse_aperture(
                         let width_mm = width * unit_multiplier * layer_scale;
                         let height_mm = height * unit_multiplier * layer_scale;
                         let hole_diameter_mm = if params.len() > 2 {
-                            params[2].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier * layer_scale
+                            params[2].trim().parse::<f32>().unwrap_or(0.0)
+                                * unit_multiplier
+                                * layer_scale
                         } else {
                             0.0
                         };
@@ -281,7 +287,9 @@ pub fn parse_aperture(
 
                         // Parse hole (only if 4+ parameters)
                         let hole_diameter_mm = if params.len() > 3 {
-                            params[3].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier * layer_scale
+                            params[3].trim().parse::<f32>().unwrap_or(0.0)
+                                * unit_multiplier
+                                * layer_scale
                         } else {
                             0.0
                         };

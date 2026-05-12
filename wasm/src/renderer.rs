@@ -141,67 +141,7 @@ impl Renderer {
 
             // Delete all cached buffers and VAOs
             for cache in layer.buffer_caches {
-                // Delete triangle cache
-                if let Some(vao) = cache.triangle_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.triangle_vertex_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.triangle_index_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-
-                // Delete circle cache
-                if let Some(vao) = cache.circle_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.circle_center_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.circle_radius_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-
-                // Delete arc cache
-                if let Some(vao) = cache.arc_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.arc_center_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_radius_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_start_angle_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_sweep_angle_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_thickness_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-
-                // Delete thermal cache
-                if let Some(vao) = cache.thermal_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.thermal_center_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_outer_diameter_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_inner_diameter_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_gap_thickness_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_rotation_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
+                self.delete_buffer_cache(cache);
             }
         }
 
@@ -211,78 +151,92 @@ impl Renderer {
 
     /// Clear all layers and clean up WebGL resources
     pub fn clear_all(&mut self) {
+        let layers: Vec<_> = self.layers.drain(..).flatten().collect();
+
         // Delete all cached resources for each layer
-        for layer in self.layers.drain(..).flatten() {
+        for layer in layers {
             // Delete framebuffer and texture
             self.gl.delete_framebuffer(Some(&layer.fbo.framebuffer));
             self.gl.delete_texture(Some(&layer.fbo.texture));
 
             // Delete all cached buffers and VAOs
             for cache in layer.buffer_caches {
-                // Delete triangle cache
-                if let Some(vao) = cache.triangle_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.triangle_vertex_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.triangle_index_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-
-                // Delete circle cache
-                if let Some(vao) = cache.circle_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.circle_center_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.circle_radius_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-
-                // Delete arc cache
-                if let Some(vao) = cache.arc_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.arc_center_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_radius_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_start_angle_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_sweep_angle_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.arc_thickness_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-
-                // Delete thermal cache
-                if let Some(vao) = cache.thermal_vao {
-                    self.gl.delete_vertex_array(Some(&vao));
-                }
-                if let Some(buf) = cache.thermal_center_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_outer_diameter_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_inner_diameter_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_gap_thickness_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
-                if let Some(buf) = cache.thermal_rotation_buffer {
-                    self.gl.delete_buffer(Some(&buf));
-                }
+                self.delete_buffer_cache(cache);
             }
         }
         self.layer_count = 0;
+    }
+
+    fn delete_buffer_cache(&self, cache: BufferCache) {
+        if let Some(vao) = cache.triangle_vao {
+            self.gl.delete_vertex_array(Some(&vao));
+        }
+        if let Some(buf) = cache.triangle_vertex_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.triangle_index_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.triangle_hole_center_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.triangle_hole_radius_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+
+        if let Some(vao) = cache.circle_vao {
+            self.gl.delete_vertex_array(Some(&vao));
+        }
+        if let Some(buf) = cache.circle_center_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.circle_radius_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.circle_hole_center_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.circle_hole_radius_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+
+        if let Some(vao) = cache.arc_vao {
+            self.gl.delete_vertex_array(Some(&vao));
+        }
+        if let Some(buf) = cache.arc_center_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.arc_radius_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.arc_start_angle_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.arc_sweep_angle_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.arc_thickness_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+
+        if let Some(vao) = cache.thermal_vao {
+            self.gl.delete_vertex_array(Some(&vao));
+        }
+        if let Some(buf) = cache.thermal_center_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.thermal_outer_diameter_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.thermal_inner_diameter_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.thermal_gap_thickness_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.thermal_rotation_buffer {
+            self.gl.delete_buffer(Some(&buf));
+        }
     }
 
     fn create_fbo(gl: &WebGl2RenderingContext, width: u32, height: u32) -> Result<Fbo, JsValue> {
@@ -350,8 +304,9 @@ impl Renderer {
             let array = Float32Array::view(data);
             gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
         }
-        let loc = program.attributes.get(attr_name)
-            .ok_or_else(|| JsValue::from_str(&format!("Missing shader attribute: {}", attr_name)))?;
+        let loc = program.attributes.get(attr_name).ok_or_else(|| {
+            JsValue::from_str(&format!("Missing shader attribute: {}", attr_name))
+        })?;
         gl.enable_vertex_attrib_array(*loc);
         gl.vertex_attrib_pointer_with_i32(*loc, 1, FLOAT, false, 0, 0);
         gl.vertex_attrib_divisor(*loc, divisor);
@@ -374,8 +329,9 @@ impl Renderer {
             let array = Float32Array::view(data);
             gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
         }
-        let loc = program.attributes.get(attr_name)
-            .ok_or_else(|| JsValue::from_str(&format!("Missing shader attribute: {}", attr_name)))?;
+        let loc = program.attributes.get(attr_name).ok_or_else(|| {
+            JsValue::from_str(&format!("Missing shader attribute: {}", attr_name))
+        })?;
         gl.enable_vertex_attrib_array(*loc);
         gl.vertex_attrib_pointer_with_i32(*loc, 2, FLOAT, false, 0, 0);
         gl.vertex_attrib_divisor(*loc, divisor);
@@ -1028,14 +984,7 @@ impl Renderer {
             let layer_idx = layer_id as usize;
 
             // Validate layer exists and get FBO
-            let layer = if layer_idx >= self.layers.len() || self.layers[layer_idx].is_none() {
-                return Err(JsValue::from_str(&format!(
-                    "Invalid layer_id: {}",
-                    layer_id
-                )));
-            } else {
-                self.layers[layer_idx].as_ref().unwrap()
-            };
+            let layer = self.get_layer(layer_idx)?;
             let fbo = &layer.fbo;
 
             // Bind layer FBO
@@ -1127,13 +1076,27 @@ impl Renderer {
         Boundary::new(min_x, max_x, min_y, max_y)
     }
 
+    /// Get the boundary for one active user layer.
+    pub fn get_layer_boundary(&self, layer_id: usize) -> Result<Boundary, JsValue> {
+        let boundary = &self.get_layer(layer_id)?.boundary;
+        Ok(Boundary::new(
+            boundary.min_x,
+            boundary.max_x,
+            boundary.min_y,
+            boundary.max_y,
+        ))
+    }
+
     /// Resize framebuffers when canvas size changes
     pub fn resize(&mut self) -> Result<(), JsValue> {
         let (width, height) = self.get_canvas_size()?;
 
         // Recreate FBO for each active layer
         for layer in self.layers.iter_mut().flatten() {
-            layer.fbo = Self::create_fbo(&self.gl, width, height)?;
+            let old_fbo =
+                std::mem::replace(&mut layer.fbo, Self::create_fbo(&self.gl, width, height)?);
+            self.gl.delete_framebuffer(Some(&old_fbo.framebuffer));
+            self.gl.delete_texture(Some(&old_fbo.texture));
         }
 
         Ok(())

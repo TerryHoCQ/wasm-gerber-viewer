@@ -295,7 +295,13 @@ impl ShaderPrograms {
             gl,
             CIRCLE_VERTEX_SHADER,
             CIRCLE_FRAGMENT_SHADER,
-            &["position", "center_instance", "radius_instance", "hole_center_instance", "hole_radius_instance"],
+            &[
+                "position",
+                "center_instance",
+                "radius_instance",
+                "hole_center_instance",
+                "hole_radius_instance",
+            ],
             &["transform", "color"],
         )?;
 
@@ -426,7 +432,10 @@ fn compile_shader(
             .get_shader_info_log(&shader)
             .unwrap_or_else(|| "Unknown error".to_string());
         gl.delete_shader(Some(&shader));
-        return Err(JsValue::from_str(&format!("Shader compile error: {}", error)));
+        return Err(JsValue::from_str(&format!(
+            "Shader compile error: {}",
+            error
+        )));
     }
 
     Ok(shader)

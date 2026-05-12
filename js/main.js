@@ -14,6 +14,10 @@ export class GerberViewer {
     this.alphaSlider = document.getElementById("alpha-slider");
     this.alphaValue = document.getElementById("alpha-value");
     this.layerList = document.getElementById("layer-list");
+    this.notification = document.getElementById("file-size-warning");
+    this.notificationTitle = document.getElementById("warning-title");
+    this.notificationMessage = document.getElementById("warning-message");
+    this.notificationCloseBtn = this.notification.querySelector(".btn-close");
 
     // Drawer elements
     this.drawer = document.getElementById("drawer");
@@ -36,6 +40,8 @@ export class GerberViewer {
       offsetX: 0.0,
       offsetY: 0.0,
     };
+    this.minZoom = 0.000001;
+    this.maxZoom = 1000000.0;
 
     // Interaction
     this.isPanning = false;
@@ -67,6 +73,7 @@ export class GerberViewer {
 
     // Global alpha
     this.globalAlpha = 0.7;
+    this.notificationTimeout = null;
   }
 
   async init() {
@@ -96,9 +103,14 @@ export class GerberViewer {
   }
 
   resizeCanvas() {
+    if (this.drawer && !this.drawer.classList.contains("collapsed")) {
+      this.setDrawerWidth(this.drawerCurrentWidth);
+    }
+
     const rect = this.canvas.getBoundingClientRect();
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height;
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = Math.max(1, Math.round(rect.width * pixelRatio));
+    this.canvas.height = Math.max(1, Math.round(rect.height * pixelRatio));
 
     if (this.wasmProcessor) {
       this.wasmProcessor.resize();
@@ -144,6 +156,10 @@ export class GerberViewer {
       this.updateGlobalAlpha(alpha);
     });
 
+    this.notificationCloseBtn.addEventListener("click", () => {
+      this.hideNotification();
+    });
+
     // Canvas mouse events
     this.canvas.addEventListener("mousedown", (e) => this.handleMouseDown(e));
     this.canvas.addEventListener("mousemove", (e) => this.handleMouseMove(e));
@@ -186,6 +202,7 @@ export class GerberViewer {
     });
 
     // Drawer toggle event
+    this.updateDrawerToggleState();
     this.drawerToggleBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
@@ -254,37 +271,62 @@ export class GerberViewer {
   }
 
   showFileSizeWarning(oversizedFiles) {
-    const warningDiv = document.getElementById("file-size-warning");
-    const warningMessage = document.getElementById("warning-message");
+    this.showNotification("Warning", "warning", 8000, (messageElement) => {
+      const list = document.createElement("ul");
+      list.className = "mb-0 mt-2 ps-3";
 
-    let message = "<br>";
-    oversizedFiles.forEach((file) => {
-      message += `<br>• <strong>${file.name}</strong>: ${file.size} (limit: ${file.limit})`;
+      oversizedFiles.forEach((file) => {
+        const item = document.createElement("li");
+        const fileName = document.createElement("strong");
+        fileName.textContent = file.name;
+
+        item.appendChild(fileName);
+        item.append(
+          document.createTextNode(`: ${file.size} (limit: ${file.limit})`),
+        );
+        list.appendChild(item);
+      });
+
+      messageElement.appendChild(list);
     });
-
-    warningMessage.innerHTML = message;
-    warningDiv.style.display = "block";
-
-    // Auto-hide after 8 seconds
-    setTimeout(() => {
-      warningDiv.style.display = "none";
-    }, 8000);
   }
 
   showError(message) {
-    const warningDiv = document.getElementById("file-size-warning");
-    const warningTitle = document.getElementById("warning-title");
-    const warningMessage = document.getElementById("warning-message");
+    this.showNotification("Error", "danger", 5000, (messageElement) => {
+      messageElement.textContent = message;
+    });
+  }
 
-    warningTitle.textContent = "Error";
-    warningMessage.textContent = message;
-    warningDiv.style.display = "block";
+  showNotification(title, variant, duration, renderMessage) {
+    if (this.notificationTimeout !== null) {
+      clearTimeout(this.notificationTimeout);
+    }
 
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-      warningDiv.style.display = "none";
-      warningTitle.textContent = "Warning";
-    }, 5000);
+    this.notification.classList.remove("alert-warning", "alert-danger", "show");
+    this.notification.classList.add(`alert-${variant}`);
+    this.notificationTitle.textContent = title;
+    this.notificationMessage.replaceChildren();
+    renderMessage(this.notificationMessage);
+    this.notification.style.display = "block";
+
+    requestAnimationFrame(() => {
+      this.notification.classList.add("show");
+    });
+
+    this.notificationTimeout = setTimeout(() => {
+      this.hideNotification();
+    }, duration);
+  }
+
+  hideNotification() {
+    if (this.notificationTimeout !== null) {
+      clearTimeout(this.notificationTimeout);
+      this.notificationTimeout = null;
+    }
+
+    this.notification.classList.remove("show");
+    this.notification.style.display = "none";
+    this.notificationTitle.textContent = "Warning";
   }
 
   async addLayer(name, content) {
@@ -295,8 +337,8 @@ export class GerberViewer {
         throw new Error("Failed to get layer ID from WASM processor");
       }
 
-      // Get layer boundary from WASM
-      const bounds = this.wasmProcessor.get_boundary();
+      // Get this layer's boundary from WASM
+      const bounds = this.wasmProcessor.get_layer_boundary(layerId);
 
       const color =
         this.colorPalette[this.nextColorIndex % this.colorPalette.length];
@@ -421,7 +463,7 @@ export class GerberViewer {
 
     if (boundsWidth === 0 && boundsHeight === 0) {
       // Can't fit to a single point, just center it
-      this.camera.zoom = 2.0;
+      this.camera.zoom = this.clampZoom(2.0);
       this.camera.offsetX = -centerX * this.camera.zoom;
       this.camera.offsetY = -centerY * this.camera.zoom;
       this.render();
@@ -444,9 +486,9 @@ export class GerberViewer {
       }
     }
 
-    this.camera.zoom = zoom;
-    this.camera.offsetX = -centerX * zoom;
-    this.camera.offsetY = -centerY * zoom;
+    this.camera.zoom = this.clampZoom(zoom);
+    this.camera.offsetX = -centerX * this.camera.zoom;
+    this.camera.offsetY = -centerY * this.camera.zoom;
 
     this.render();
   }
@@ -454,36 +496,42 @@ export class GerberViewer {
   handleWheel(e) {
     e.preventDefault();
 
+    const zoomChange = Math.exp(-e.deltaY * 0.001);
+    this.zoomAtCanvasPoint(e.clientX, e.clientY, zoomChange);
+  }
+
+  clampZoom(zoom) {
+    if (!Number.isFinite(zoom)) {
+      return this.camera.zoom;
+    }
+
+    return Math.min(this.maxZoom, Math.max(this.minZoom, zoom));
+  }
+
+  zoomAtCanvasPoint(clientX, clientY, zoomChange) {
+    if (!Number.isFinite(zoomChange) || zoomChange <= 0) {
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) {
       return;
     }
 
-    const mx_screen = e.clientX - rect.left;
-    const my_screen = e.clientY - rect.top;
+    const mxScreen = clientX - rect.left;
+    const myScreen = clientY - rect.top;
 
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
-    const mouseXNDC = ((mx_screen - centerX) / rect.width) * 2;
-    const mouseYNDC = -((my_screen - centerY) / rect.height) * 2;
+    const mouseXNDC = ((mxScreen - centerX) / rect.width) * 2;
+    const mouseYNDC = -((myScreen - centerY) / rect.height) * 2;
 
     const aspect = this.canvas.width / this.canvas.height;
-
-    // Apply aspect ratio correction to mouse position
-    let mouseXCorrected, mouseYCorrected;
-    if (aspect > 1.0) {
-      mouseXCorrected = mouseXNDC * aspect;
-      mouseYCorrected = mouseYNDC;
-    } else {
-      mouseXCorrected = mouseXNDC;
-      mouseYCorrected = mouseYNDC / aspect;
-    }
-
-    const zoomChange = 1 + (e.deltaY<0?1:-1) * Math.sqrt(Math.abs(e.deltaY)) * 0.02;
+    const mouseXCorrected = aspect > 1.0 ? mouseXNDC * aspect : mouseXNDC;
+    const mouseYCorrected = aspect > 1.0 ? mouseYNDC : mouseYNDC / aspect;
 
     const prevZoom = this.camera.zoom;
-    const newZoom = prevZoom * zoomChange;
-
+    const newZoom = this.clampZoom(prevZoom * zoomChange);
     const zoomRatio = newZoom / prevZoom;
 
     this.camera.offsetX =
@@ -589,40 +637,8 @@ export class GerberViewer {
 
       // Handle pinch zoom
       if (this.lastPinchDistance !== null) {
-        const rect = this.canvas.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-
-        // Calculate zoom center in NDC
-        const mx_screen = currentCenter.x - rect.left;
-        const my_screen = currentCenter.y - rect.top;
-
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        const mouseXNDC = ((mx_screen - centerX) / rect.width) * 2;
-        const mouseYNDC = -((my_screen - centerY) / rect.height) * 2;
-
-        const aspect = this.canvas.width / this.canvas.height;
-
-        let mouseXCorrected, mouseYCorrected;
-        if (aspect > 1.0) {
-          mouseXCorrected = mouseXNDC * aspect;
-          mouseYCorrected = mouseYNDC;
-        } else {
-          mouseXCorrected = mouseXNDC;
-          mouseYCorrected = mouseYNDC / aspect;
-        }
-
-        // Apply zoom
         const zoomChange = currentDistance / this.lastPinchDistance;
-        const prevZoom = this.camera.zoom;
-        const newZoom = prevZoom * zoomChange;
-        const zoomRatio = newZoom / prevZoom;
-
-        this.camera.offsetX =
-          (this.camera.offsetX - mouseXCorrected) * zoomRatio + mouseXCorrected;
-        this.camera.offsetY =
-          (this.camera.offsetY - mouseYCorrected) * zoomRatio + mouseYCorrected;
-        this.camera.zoom = newZoom;
+        this.zoomAtCanvasPoint(currentCenter.x, currentCenter.y, zoomChange);
 
         this.lastPinchDistance = currentDistance;
       }
@@ -856,8 +872,34 @@ export class GerberViewer {
   }
 
   // Drawer management methods
+  getDrawerMaxWidth() {
+    const viewportLimit = Math.max(this.drawerMinWidth, window.innerWidth - 48);
+    return Math.min(this.drawerMaxWidth, viewportLimit);
+  }
+
+  clampDrawerWidth(width) {
+    if (!Number.isFinite(width)) {
+      return this.drawerCurrentWidth;
+    }
+
+    return Math.min(
+      this.getDrawerMaxWidth(),
+      Math.max(this.drawerMinWidth, width),
+    );
+  }
+
+  setDrawerWidth(width) {
+    const clampedWidth = this.clampDrawerWidth(width);
+    this.drawerCurrentWidth = clampedWidth;
+    this.drawer.style.width = `${clampedWidth}px`;
+  }
+
   startDrawerResize(e) {
     e.preventDefault();
+    if (this.drawer.classList.contains("collapsed")) {
+      return;
+    }
+
     this.isResizingDrawer = true;
     this.drawer.classList.add("resizing");
     document.body.style.userSelect = "none";
@@ -874,11 +916,7 @@ export class GerberViewer {
     // X position from right edge of viewport
     const newWidth = window.innerWidth - clientX;
 
-    // Constrain width within min and max bounds
-    if (newWidth >= this.drawerMinWidth && newWidth <= this.drawerMaxWidth) {
-      this.drawerCurrentWidth = newWidth;
-      this.drawer.style.width = `${newWidth}px`;
-    }
+    this.setDrawerWidth(newWidth);
   }
 
   stopDrawerResize(e) {
@@ -904,19 +942,30 @@ export class GerberViewer {
     if (isCollapsed) {
       // Expand drawer
       this.drawer.classList.remove("collapsed");
-      this.drawer.style.width = `${this.drawerCurrentWidth}px`;
-      this.drawerToggleBtn.setAttribute("aria-label", "Hide drawer");
+      this.setDrawerWidth(this.drawerCurrentWidth);
     } else {
       // Collapse drawer
+      this.drawerCurrentWidth = this.clampDrawerWidth(
+        this.drawer.getBoundingClientRect().width || this.drawerCurrentWidth,
+      );
       this.drawer.classList.add("collapsed");
-      this.drawerToggleBtn.setAttribute("aria-label", "Show drawer");
     }
+
+    this.updateDrawerToggleState();
 
     // Trigger canvas resize immediately after toggle
     // Use requestAnimationFrame to ensure layout has updated
     requestAnimationFrame(() => {
       this.triggerCanvasResize();
     });
+  }
+
+  updateDrawerToggleState() {
+    const isCollapsed = this.drawer.classList.contains("collapsed");
+    const label = isCollapsed ? "Show drawer" : "Hide drawer";
+    this.drawerToggleBtn.setAttribute("aria-label", label);
+    this.drawerToggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
+    this.drawerToggleBtn.title = label;
   }
 
   // File drop handlers

@@ -31,7 +31,7 @@ pub struct GerberParser {
     pub negative_layers: Vec<Vec<Primitive>>,
     pub current_primitives: Vec<Primitive>, // Accumulating primitives for current polarity
     pub region_contours: Vec<Vec<[f32; 2]>>, // Contour points collected in Region mode
-    total_primitives: usize, // Track total primitives for security limit
+    total_primitives: usize,                // Track total primitives for security limit
 }
 
 impl GerberParser {
@@ -104,8 +104,7 @@ impl GerberParser {
             if self.total_primitives > MAX_TOTAL_PRIMITIVES {
                 return Err(JsValue::from_str(&format!(
                     "Too many total primitives: {} (max: {})",
-                    self.total_primitives,
-                    MAX_TOTAL_PRIMITIVES
+                    self.total_primitives, MAX_TOTAL_PRIMITIVES
                 )));
             }
 
@@ -428,4 +427,31 @@ fn parse_command(
 pub fn parse_gerber(data: &str) -> Result<Vec<GerberData>, JsValue> {
     let mut parser = GerberParser::new();
     parser.parse(data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_gerber;
+
+    #[test]
+    fn region_d02_move_is_included_as_first_contour_vertex() {
+        let data = "\
+%FSLAX24Y24*%
+%MOMM*%
+%LPD*%
+G36*
+X000000Y000000D02*
+G01*
+X010000Y000000D01*
+X010000Y010000D01*
+X000000Y010000D01*
+G37*
+M02*";
+
+        let layers = parse_gerber(data).expect("region should parse");
+        let triangles = &layers[0].triangles;
+
+        assert_eq!(triangles.vertices.len() / 2, 6);
+        assert_eq!(triangles.indices.len(), 6);
+    }
 }
