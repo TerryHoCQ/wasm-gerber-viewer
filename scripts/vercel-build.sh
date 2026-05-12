@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export PATH="/rust/bin:$HOME/.cargo/bin:$PATH"
-if [ -f /rust/env ]; then
-  # shellcheck disable=SC1091
-  . /rust/env
-fi
+export CARGO_HOME="/rust"
+export RUSTUP_HOME="/rust"
+export PATH="$CARGO_HOME/bin:$PATH"
 
-rustup target add wasm32-unknown-unknown
+# shellcheck disable=SC1091
+. /rust/env
+
+rustup toolchain install stable --profile minimal
+rustup default stable
+rustup target add wasm32-unknown-unknown --toolchain stable
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
-  curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
-  export PATH="$HOME/.cargo/bin:$PATH"
+  cargo install wasm-pack --locked
 fi
 
 cd wasm
