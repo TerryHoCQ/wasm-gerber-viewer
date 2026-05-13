@@ -89,26 +89,35 @@ The following Gerber commands are not implemented yet:
 Sample archives are loaded from their upstream sources and are not bundled in
 this repository.
 
-### Sample 1
+<details>
+<summary>Sample 1: KLP-5e ESP32 Sensor Board</summary>
 
 - Project: [KLP-5e ESP32 Sensor Board](https://github.com/futureshocked/KLP-5e-ESP32-sensor-board)
 - Copyright: Copyright (c) 2025, Peter Dalmaris
 - License: CERN-OHL-S v2.0
 - Archive: <https://raw.githubusercontent.com/futureshocked/KLP-5e-ESP32-sensor-board/main/KiCad%20project/dfm/gerber.zip>
 
-### Sample 2
+</details>
+
+<details>
+<summary>Sample 2: Xassette-Asterisk</summary>
 
 - Project: [Xassette-Asterisk](https://github.com/SdtElectronics/Xassette-Asterisk)
 - Copyright: SdtElectronics
 - License: CERN-OHL-W v2.0
 - Archive: <https://processor-cdn.kitspace.org/v6/SdtElectronics/Xassette-Asterisk/6ccd88501c99e2339571de744d003d571be47fad/_/Xassette-Asterisk-6ccd885-gerbers.zip>
 
-### Sample 3
+</details>
+
+<details>
+<summary>Sample 3: OtterCastAmp</summary>
 
 - Project: [OtterCastAmp](https://github.com/Ottercast/OtterCastAmp)
 - Copyright: Copyright (c) 2021 Ottercast, Niklas Fauth
 - License: MIT License
 - Archive: <https://processor-cdn.kitspace.org/v6/Ottercast/OtterCastAmp/0b5f7f9a8e4e43a5d39048b9a1fa03e5cf7fc9f7/_/OtterCastAmp-0b5f7f9-gerbers.zip>
+
+</details>
 
 ## License
 
