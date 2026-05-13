@@ -1865,7 +1865,12 @@ export class GerberViewer {
 
     e.preventDefault();
     e.stopPropagation();
-    if (!this.dropZone.contains(e.relatedTarget)) {
+    const isStillInside =
+      e.relatedTarget instanceof Node
+        ? this.dropZone.contains(e.relatedTarget)
+        : this.isPointInsideElement(e.clientX, e.clientY, this.dropZone);
+
+    if (!isStillInside) {
       this.dropZone.classList.remove("drag-active");
     }
   }
@@ -1881,5 +1886,15 @@ export class GerberViewer {
     if (files?.length > 0) {
       this.handleFileUpload(files);
     }
+  }
+
+  isPointInsideElement(clientX, clientY, element) {
+    const rect = element.getBoundingClientRect();
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
   }
 }
