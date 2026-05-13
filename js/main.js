@@ -1,3 +1,5 @@
+const NOTIFICATION_DURATION_MS = 2000;
+
 export class GerberViewer {
   constructor() {
     // Main canvas (WebGL2)
@@ -10,6 +12,8 @@ export class GerberViewer {
     this.selectFilesBtn = document.getElementById("select-files-btn");
     this.emptyUploadBtn = document.getElementById("empty-upload-btn");
     this.fitViewBtn = document.getElementById("fit-view-btn");
+    this.flipHorizontalBtn = document.getElementById("flip-horizontal-btn");
+    this.flipVerticalBtn = document.getElementById("flip-vertical-btn");
     this.canvasThemeToggle = document.getElementById("canvas-theme-toggle");
     this.screenshotBtn = document.getElementById("screenshot-btn");
     this.rulerToggleBtn = document.getElementById("ruler-toggle-btn");
@@ -70,6 +74,8 @@ export class GerberViewer {
       zoom: 1.0,
       offsetX: 0.0,
       offsetY: 0.0,
+      flipX: false,
+      flipY: false,
     };
     this.fitViewZoom = null;
     this.minZoom = 0.000001;
@@ -89,8 +95,13 @@ export class GerberViewer {
     // Drawer resize state
     this.isResizingDrawer = false;
     this.drawerCurrentWidth = 381;
+    this.drawerCurrentHeight = 420;
+    this.drawerPendingWidth = null;
+    this.drawerPendingHeight = null;
     this.drawerMinWidth = 200;
     this.drawerMaxWidth = 600;
+    this.drawerMinHeight = 180;
+    this.drawerMaxHeight = 560;
 
     // Colors
     this.colorPalette = [
@@ -136,7 +147,10 @@ export class GerberViewer {
 
     // Resize Canvas
     this.resizeCanvas();
-    window.addEventListener("resize", () => this.resizeCanvas());
+    window.addEventListener("resize", () => {
+      this.resizeCanvas();
+      this.updateDrawerToggleState();
+    });
 
     this.setupEventListeners();
 
@@ -146,12 +160,17 @@ export class GerberViewer {
     this.updateUiState();
     this.updateRulerControls();
     this.updateMeasurementUnitControl();
+    this.updateViewFlipControls();
     this.render();
   }
 
   resizeCanvas() {
     if (this.drawer && !this.drawer.classList.contains("collapsed")) {
-      this.setDrawerWidth(this.drawerCurrentWidth);
+      if (this.isMobileDrawerLayout()) {
+        this.setDrawerHeight(this.drawerCurrentHeight);
+      } else {
+        this.setDrawerWidth(this.drawerCurrentWidth);
+      }
     }
 
     const rect = this.canvas.getBoundingClientRect();
@@ -185,6 +204,14 @@ export class GerberViewer {
     // Fit view button
     this.fitViewBtn.addEventListener("click", () => {
       this.fitView();
+    });
+
+    this.flipHorizontalBtn.addEventListener("click", () => {
+      this.toggleViewFlip("x");
+    });
+
+    this.flipVerticalBtn.addEventListener("click", () => {
+      this.toggleViewFlip("y");
     });
 
     this.canvasThemeToggle.addEventListener("click", () => {
@@ -298,7 +325,7 @@ export class GerberViewer {
     });
 
     // Drawer toggle event
-    if (window.matchMedia("(max-width: 760px)").matches) {
+    if (this.isMobileDrawerLayout()) {
       this.drawer.classList.add("collapsed");
     }
     this.updateDrawerToggleState();
@@ -532,6 +559,38 @@ export class GerberViewer {
     });
   }
 
+  getViewScaleX() {
+    return this.camera.zoom * (this.camera.flipX ? -1 : 1);
+  }
+
+  getViewScaleY() {
+    return this.camera.zoom * (this.camera.flipY ? -1 : 1);
+  }
+
+  toggleViewFlip(axis) {
+    if (axis === "x") {
+      this.camera.flipX = !this.camera.flipX;
+      this.camera.offsetX = -this.camera.offsetX;
+    } else if (axis === "y") {
+      this.camera.flipY = !this.camera.flipY;
+      this.camera.offsetY = -this.camera.offsetY;
+    }
+
+    this.render();
+    this.updateViewFlipControls();
+  }
+
+  updateViewFlipControls() {
+    this.flipHorizontalBtn.setAttribute(
+      "aria-pressed",
+      String(this.camera.flipX),
+    );
+    this.flipVerticalBtn.setAttribute(
+      "aria-pressed",
+      String(this.camera.flipY),
+    );
+  }
+
   toggleCanvasTheme() {
     this.isCanvasLight = !this.isCanvasLight;
     this.updateCanvasTheme();
@@ -641,7 +700,7 @@ export class GerberViewer {
     context.font = "700 12px Inter, ui-sans-serif, system-ui, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.lineWidth = 2;
+    context.lineWidth = 4;
     context.strokeStyle = "#000";
     context.fillStyle = "#fff";
     context.strokeText(this.formatMeasurementLength(distance), x, y);
@@ -798,30 +857,40 @@ export class GerberViewer {
   }
 
   showFileSizeWarning(oversizedFiles) {
-    this.showNotification("Warning", "warning", 8000, (messageElement) => {
-      const list = document.createElement("ul");
-      list.className = "mb-0 mt-2 ps-3";
+    this.showNotification(
+      "Warning",
+      "warning",
+      NOTIFICATION_DURATION_MS,
+      (messageElement) => {
+        const list = document.createElement("ul");
+        list.className = "mb-0 mt-2 ps-3";
 
-      oversizedFiles.forEach((file) => {
-        const item = document.createElement("li");
-        const fileName = document.createElement("strong");
-        fileName.textContent = file.name;
+        oversizedFiles.forEach((file) => {
+          const item = document.createElement("li");
+          const fileName = document.createElement("strong");
+          fileName.textContent = file.name;
 
-        item.appendChild(fileName);
-        item.append(
-          document.createTextNode(`: ${file.size} (limit: ${file.limit})`),
-        );
-        list.appendChild(item);
-      });
+          item.appendChild(fileName);
+          item.append(
+            document.createTextNode(`: ${file.size} (limit: ${file.limit})`),
+          );
+          list.appendChild(item);
+        });
 
-      messageElement.appendChild(list);
-    });
+        messageElement.appendChild(list);
+      },
+    );
   }
 
   showError(message) {
-    this.showNotification("Error", "danger", 5000, (messageElement) => {
-      messageElement.textContent = message;
-    });
+    this.showNotification(
+      "Error",
+      "danger",
+      NOTIFICATION_DURATION_MS,
+      (messageElement) => {
+        messageElement.textContent = message;
+      },
+    );
   }
 
   showNotification(title, variant, duration, renderMessage) {
@@ -919,8 +988,8 @@ export class GerberViewer {
       this.wasmProcessor.render(
         new Uint32Array(activeLayerIds),
         new Float32Array(colorData),
-        this.camera.zoom,
-        this.camera.zoom,
+        this.getViewScaleX(),
+        this.getViewScaleY(),
         this.camera.offsetX,
         this.camera.offsetY,
         this.globalAlpha,
@@ -1042,8 +1111,10 @@ export class GerberViewer {
 
     this.camera.zoom = this.clampZoom(fitView.zoom);
     this.fitViewZoom = this.camera.zoom;
-    this.camera.offsetX = -fitView.centerX * this.camera.zoom;
-    this.camera.offsetY = -fitView.centerY * this.camera.zoom;
+    this.camera.offsetX =
+      fitView.targetX - fitView.centerX * this.getViewScaleX();
+    this.camera.offsetY =
+      fitView.targetY - fitView.centerY * this.getViewScaleY();
 
     this.render();
     this.updateUiState();
@@ -1089,30 +1160,104 @@ export class GerberViewer {
       return null;
     }
 
+    const viewport = this.getVisibleCanvasViewport();
+    if (!viewport) return null;
+
     const boundsWidth = maxX - minX;
     const boundsHeight = maxY - minY;
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
+    const targetX = (viewport.left + viewport.right) / 2;
+    const targetY = (viewport.top + viewport.bottom) / 2;
 
     if (boundsWidth === 0 && boundsHeight === 0) {
-      return { centerX, centerY, zoom: 2.0 };
+      return { centerX, centerY, targetX, targetY, zoom: 2.0 };
     }
 
     let zoom;
     if (boundsWidth === 0) {
-      zoom = (2.0 / boundsHeight) * 0.9;
+      zoom = (viewport.height / boundsHeight) * 0.9;
     } else if (boundsHeight === 0) {
-      zoom = (2.0 / boundsWidth) * 0.9;
+      zoom = (viewport.width / boundsWidth) * 0.9;
     } else {
-      const canvasAspect = this.canvas.width / this.canvas.height;
-      const boundsAspect = boundsWidth / boundsHeight;
       zoom =
-        boundsAspect > canvasAspect
-          ? (2.0 / boundsWidth) * 0.9
-          : (2.0 / boundsHeight) * 0.9;
+        Math.min(viewport.width / boundsWidth, viewport.height / boundsHeight) *
+        0.9;
     }
 
-    return { centerX, centerY, zoom };
+    return { centerX, centerY, targetX, targetY, zoom };
+  }
+
+  getVisibleCanvasViewport() {
+    const rect = this.canvas.getBoundingClientRect();
+    if (
+      rect.width === 0 ||
+      rect.height === 0 ||
+      this.canvas.width === 0 ||
+      this.canvas.height === 0
+    ) {
+      return null;
+    }
+
+    const visibleRect = {
+      left: 0,
+      top: 0,
+      right: rect.width,
+      bottom: rect.height,
+    };
+    const drawerRect = this.drawer.getBoundingClientRect();
+    const intersectsCanvas =
+      drawerRect.right > rect.left &&
+      drawerRect.left < rect.right &&
+      drawerRect.bottom > rect.top &&
+      drawerRect.top < rect.bottom;
+
+    if (intersectsCanvas) {
+      if (this.isMobileDrawerLayout()) {
+        visibleRect.bottom = Math.max(
+          visibleRect.top + 1,
+          Math.min(visibleRect.bottom, drawerRect.top - rect.top),
+        );
+      } else {
+        visibleRect.right = Math.max(
+          visibleRect.left + 1,
+          Math.min(visibleRect.right, drawerRect.left - rect.left),
+        );
+      }
+    }
+
+    const topLeft = this.canvasLocalPointToCorrected(
+      visibleRect.left,
+      visibleRect.top,
+      rect,
+    );
+    const bottomRight = this.canvasLocalPointToCorrected(
+      visibleRect.right,
+      visibleRect.bottom,
+      rect,
+    );
+
+    return {
+      left: topLeft.x,
+      right: bottomRight.x,
+      top: topLeft.y,
+      bottom: bottomRight.y,
+      width: Math.abs(bottomRight.x - topLeft.x),
+      height: Math.abs(topLeft.y - bottomRight.y),
+    };
+  }
+
+  canvasLocalPointToCorrected(x, y, rect) {
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const ndcX = ((x - centerX) / rect.width) * 2;
+    const ndcY = -((y - centerY) / rect.height) * 2;
+    const aspect = this.canvas.width / this.canvas.height;
+
+    return {
+      x: aspect > 1.0 ? ndcX * aspect : ndcX,
+      y: aspect > 1.0 ? ndcY : ndcY / aspect,
+    };
   }
 
   handleWheel(e) {
@@ -1246,8 +1391,8 @@ export class GerberViewer {
     const aspect = this.canvas.width / this.canvas.height;
     const correctedX = aspect > 1.0 ? mouseXNDC * aspect : mouseXNDC;
     const correctedY = aspect > 1.0 ? mouseYNDC : mouseYNDC / aspect;
-    const worldX = (correctedX - this.camera.offsetX) / this.camera.zoom;
-    const worldY = (correctedY - this.camera.offsetY) / this.camera.zoom;
+    const worldX = (correctedX - this.camera.offsetX) / this.getViewScaleX();
+    const worldY = (correctedY - this.camera.offsetY) / this.getViewScaleY();
     return { x: worldX, y: worldY };
   }
 
@@ -1258,8 +1403,8 @@ export class GerberViewer {
     }
 
     const aspect = this.canvas.width / this.canvas.height;
-    const correctedX = point.x * this.camera.zoom + this.camera.offsetX;
-    const correctedY = point.y * this.camera.zoom + this.camera.offsetY;
+    const correctedX = point.x * this.getViewScaleX() + this.camera.offsetX;
+    const correctedY = point.y * this.getViewScaleY() + this.camera.offsetY;
     const ndcX = aspect > 1.0 ? correctedX / aspect : correctedX;
     const ndcY = aspect > 1.0 ? correctedY : correctedY * aspect;
     return {
@@ -1742,6 +1887,10 @@ export class GerberViewer {
   }
 
   // Drawer management methods
+  isMobileDrawerLayout() {
+    return window.matchMedia("(max-width: 760px)").matches;
+  }
+
   getDrawerMaxWidth() {
     const viewportLimit = Math.max(this.drawerMinWidth, window.innerWidth - 48);
     return Math.min(this.drawerMaxWidth, viewportLimit);
@@ -1758,11 +1907,49 @@ export class GerberViewer {
     );
   }
 
-  setDrawerWidth(width) {
+  setDrawerWidth(width, { commitLayout = true } = {}) {
     const clampedWidth = this.clampDrawerWidth(width);
-    this.drawerCurrentWidth = clampedWidth;
+    if (commitLayout) {
+      this.drawerCurrentWidth = clampedWidth;
+      this.drawerPendingWidth = null;
+      this.dropZone.style.setProperty("--panel-width", `${clampedWidth}px`);
+    } else {
+      this.drawerPendingWidth = clampedWidth;
+    }
+    this.drawer.style.height = "";
     this.drawer.style.width = `${clampedWidth}px`;
-    this.dropZone.style.setProperty("--panel-width", `${clampedWidth}px`);
+  }
+
+  getDrawerMaxHeight() {
+    const viewportLimit = Math.max(
+      this.drawerMinHeight,
+      Math.floor(window.innerHeight * 0.72),
+    );
+    return Math.min(this.drawerMaxHeight, viewportLimit);
+  }
+
+  clampDrawerHeight(height) {
+    if (!Number.isFinite(height)) {
+      return this.drawerCurrentHeight;
+    }
+
+    return Math.min(
+      this.getDrawerMaxHeight(),
+      Math.max(this.drawerMinHeight, height),
+    );
+  }
+
+  setDrawerHeight(height, { commitLayout = true } = {}) {
+    const clampedHeight = this.clampDrawerHeight(height);
+    if (commitLayout) {
+      this.drawerCurrentHeight = clampedHeight;
+      this.drawerPendingHeight = null;
+      this.dropZone.style.setProperty("--panel-height", `${clampedHeight}px`);
+    } else {
+      this.drawerPendingHeight = clampedHeight;
+    }
+    this.drawer.style.width = "";
+    this.drawer.style.height = `${clampedHeight}px`;
   }
 
   startDrawerResize(e) {
@@ -1774,32 +1961,46 @@ export class GerberViewer {
     this.isResizingDrawer = true;
     this.drawer.classList.add("resizing");
     document.body.style.userSelect = "none";
-    document.body.style.cursor = "ew-resize";
+    document.body.style.cursor = this.isMobileDrawerLayout()
+      ? "ns-resize"
+      : "ew-resize";
   }
 
   resizeDrawer(e) {
     if (!this.isResizingDrawer) return;
 
-    // Get X position from mouse or touch event
+    e.preventDefault();
+
+    if (this.isMobileDrawerLayout()) {
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      this.setDrawerHeight(window.innerHeight - clientY, {
+        commitLayout: false,
+      });
+      return;
+    }
+
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-
-    // Calculate new width based on position
-    // X position from right edge of viewport
     const newWidth = window.innerWidth - clientX;
-
-    this.setDrawerWidth(newWidth);
+    this.setDrawerWidth(newWidth, { commitLayout: false });
   }
 
   stopDrawerResize(e) {
     if (!this.isResizingDrawer) return;
 
+    if (this.isMobileDrawerLayout()) {
+      if (this.drawerPendingHeight !== null) {
+        this.setDrawerHeight(this.drawerPendingHeight);
+      }
+    } else if (this.drawerPendingWidth !== null) {
+      this.setDrawerWidth(this.drawerPendingWidth);
+    }
+
     this.isResizingDrawer = false;
-    this.drawer.classList.remove("resizing");
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
-
-    // Trigger canvas resize
-    this.triggerCanvasResize();
+    requestAnimationFrame(() => {
+      this.drawer.classList.remove("resizing");
+    });
   }
 
   triggerCanvasResize() {
@@ -1814,36 +2015,45 @@ export class GerberViewer {
     if (shouldOpen) {
       // Expand drawer
       this.drawer.classList.remove("collapsed");
-      this.setDrawerWidth(this.drawerCurrentWidth);
+      if (this.isMobileDrawerLayout()) {
+        this.setDrawerHeight(this.drawerCurrentHeight);
+      } else {
+        this.setDrawerWidth(this.drawerCurrentWidth);
+      }
     } else {
       // Collapse drawer
-      this.drawerCurrentWidth = this.clampDrawerWidth(
-        this.drawer.getBoundingClientRect().width || this.drawerCurrentWidth,
-      );
+      const drawerRect = this.drawer.getBoundingClientRect();
+      if (this.isMobileDrawerLayout()) {
+        this.drawerCurrentHeight = this.clampDrawerHeight(
+          drawerRect.height || this.drawerCurrentHeight,
+        );
+      } else {
+        this.drawerCurrentWidth = this.clampDrawerWidth(
+          drawerRect.width || this.drawerCurrentWidth,
+        );
+      }
       this.drawer.classList.add("collapsed");
     }
 
     this.updateDrawerToggleState();
-
-    // Trigger canvas resize immediately after toggle
-    // Use requestAnimationFrame to ensure layout has updated
-    requestAnimationFrame(() => {
-      this.triggerCanvasResize();
-    });
   }
 
   updateDrawerToggleState() {
     const isCollapsed = this.drawer.classList.contains("collapsed");
     const label = isCollapsed ? "Show panel" : "Hide panel";
+    const iconName = this.isMobileDrawerLayout()
+      ? isCollapsed
+        ? "chevron-up"
+        : "chevron-down"
+      : isCollapsed
+        ? "panel-right-open"
+        : "panel-right-close";
     this.drawerToggleBtn.setAttribute("aria-label", label);
     this.drawerToggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
     this.drawerToggleBtn.title = label;
     this.drawerToggleBtn.replaceChildren();
     const icon = document.createElement("i");
-    icon.setAttribute(
-      "data-lucide",
-      isCollapsed ? "panel-right-open" : "panel-right-close",
-    );
+    icon.setAttribute("data-lucide", iconName);
     this.drawerToggleBtn.appendChild(icon);
     this.refreshIcons();
   }
