@@ -2,22 +2,45 @@ export class GerberViewer {
   constructor() {
     // Main canvas (WebGL2)
     this.canvas = document.getElementById("gerber-canvas");
+    this.viewerSurface = this.canvas.closest(".viewer-surface");
     this.gl = null; // WebGL2 context
 
     // DOM elements
     this.fileInput = document.getElementById("file-input");
     this.selectFilesBtn = document.getElementById("select-files-btn");
-    this.fitViewBtn = document.querySelector(".button-container button");
+    this.emptyUploadBtn = document.getElementById("empty-upload-btn");
+    this.fitViewBtn = document.getElementById("fit-view-btn");
+    this.canvasThemeToggle = document.getElementById("canvas-theme-toggle");
+    this.rulerToggleBtn = document.getElementById("ruler-toggle-btn");
+    this.rulerClearBtn = document.getElementById("ruler-clear-btn");
+    this.fullscreenBtn = document.getElementById("fullscreen-btn");
     this.selectAllBtn = document.getElementById("select-all-btn");
     this.unselectAllBtn = document.getElementById("unselect-all-btn");
     this.clearAllBtn = document.getElementById("clear-all-btn");
     this.alphaSlider = document.getElementById("alpha-slider");
     this.alphaValue = document.getElementById("alpha-value");
     this.layerList = document.getElementById("layer-list");
+    this.fileList = document.getElementById("file-list");
+    this.diagnosticList = document.getElementById("diagnostic-list");
     this.notification = document.getElementById("file-size-warning");
     this.notificationTitle = document.getElementById("warning-title");
     this.notificationMessage = document.getElementById("warning-message");
-    this.notificationCloseBtn = this.notification.querySelector(".btn-close");
+    this.notificationCloseBtn = this.notification.querySelector(
+      "[data-notification-close]",
+    );
+    this.workspaceStatus = document.getElementById("workspace-status");
+    this.emptyState = document.getElementById("empty-state");
+    this.dropOverlay = document.getElementById("drop-overlay");
+    this.measurementOverlay = document.getElementById("measurement-overlay");
+    this.visibleLayerCount = document.getElementById("visible-layer-count");
+    this.zoomReadout = document.getElementById("zoom-readout");
+    this.cursorReadout = document.getElementById("cursor-readout");
+    this.boundsReadout = document.getElementById("bounds-readout");
+    this.loadedFileCount = document.getElementById("loaded-file-count");
+    this.visibleFileCount = document.getElementById("visible-file-count");
+    this.diagnosticsCount = document.getElementById("diagnostics-count");
+    this.panelTabs = Array.from(document.querySelectorAll("[data-panel-tab]"));
+    this.panelSections = Array.from(document.querySelectorAll("[data-panel]"));
 
     // Drawer elements
     this.drawer = document.getElementById("drawer");
@@ -40,6 +63,7 @@ export class GerberViewer {
       offsetX: 0.0,
       offsetY: 0.0,
     };
+    this.fitViewZoom = null;
     this.minZoom = 0.000001;
     this.maxZoom = 1000000.0;
 
@@ -74,6 +98,13 @@ export class GerberViewer {
     // Global alpha
     this.globalAlpha = 0.7;
     this.notificationTimeout = null;
+    this.diagnostics = [];
+    this.activePanel = "layers";
+    this.isCanvasLight = false;
+    this.isRulerActive = false;
+    this.rulerStartPoint = null;
+    this.rulerHoverPoint = null;
+    this.measurements = [];
   }
 
   async init() {
@@ -99,6 +130,9 @@ export class GerberViewer {
     this.setupEventListeners();
 
     // Initial render
+    this.refreshIcons();
+    this.updateUiState();
+    this.updateRulerControls();
     this.render();
   }
 
@@ -125,6 +159,10 @@ export class GerberViewer {
       this.fileInput.click();
     });
 
+    this.emptyUploadBtn.addEventListener("click", () => {
+      this.fileInput.click();
+    });
+
     this.fileInput.addEventListener("change", (e) => {
       if (e.target.files.length > 0) {
         this.handleFileUpload(e.target.files);
@@ -134,6 +172,27 @@ export class GerberViewer {
     // Fit view button
     this.fitViewBtn.addEventListener("click", () => {
       this.fitView();
+    });
+
+    this.canvasThemeToggle.addEventListener("click", () => {
+      this.toggleCanvasTheme();
+    });
+
+    this.rulerToggleBtn.addEventListener("click", () => {
+      this.toggleRuler();
+    });
+
+    this.rulerClearBtn.addEventListener("click", () => {
+      this.clearRulerMeasurements();
+    });
+
+    this.fullscreenBtn.addEventListener("click", () => {
+      this.toggleFullscreen();
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      this.updateFullscreenState();
+      this.triggerCanvasResize();
     });
 
     // Layer control buttons
@@ -202,11 +261,19 @@ export class GerberViewer {
     });
 
     // Drawer toggle event
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      this.drawer.classList.add("collapsed");
+    }
     this.updateDrawerToggleState();
     this.drawerToggleBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
       this.toggleDrawer();
+    });
+    this.panelTabs.forEach((button) => {
+      button.addEventListener("click", () => {
+        this.setActivePanel(button.dataset.panelTab);
+      });
     });
 
     // File drop events
@@ -215,10 +282,232 @@ export class GerberViewer {
     this.dropZone.addEventListener("drop", (e) => this.handleDrop(e));
   }
 
+  refreshIcons() {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  }
+
+  updateUiState() {
+    const totalLayers = this.layers.length;
+    const visibleLayers = this.layers.filter((layer) => layer.visible).length;
+
+    this.workspaceStatus.textContent =
+      totalLayers === 0
+        ? "Ready"
+        : `${visibleLayers} visible / ${totalLayers} loaded`;
+    this.visibleLayerCount.textContent = `${visibleLayers} / ${totalLayers}`;
+    this.loadedFileCount.textContent = String(totalLayers);
+    this.visibleFileCount.textContent = String(visibleLayers);
+    this.diagnosticsCount.textContent = String(this.diagnostics.length);
+    this.emptyState.classList.toggle("is-hidden", totalLayers > 0);
+    this.zoomReadout.textContent = this.formatZoom();
+    this.boundsReadout.textContent = this.formatCombinedBounds();
+    this.renderFileList();
+    this.renderDiagnostics();
+    this.refreshIcons();
+  }
+
+  formatZoom() {
+    if (this.layers.length === 0) {
+      return "100.00%";
+    }
+
+    const fitZoom = this.getFitViewZoom() ?? this.fitViewZoom;
+    if (!Number.isFinite(fitZoom) || fitZoom <= 0) {
+      return "100.00%";
+    }
+
+    const zoomPercent = (this.camera.zoom / fitZoom) * 100;
+    if (zoomPercent >= 1000 || zoomPercent < 0.01) {
+      return `${zoomPercent.toExponential(2)}%`;
+    }
+    return `${zoomPercent.toFixed(2)}%`;
+  }
+
+  formatCombinedBounds() {
+    if (this.layers.length === 0) {
+      return "No bounds";
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const layer of this.layers) {
+      if (!layer.bounds) continue;
+      minX = Math.min(minX, layer.bounds.minX);
+      maxX = Math.max(maxX, layer.bounds.maxX);
+      minY = Math.min(minY, layer.bounds.minY);
+      maxY = Math.max(maxY, layer.bounds.maxY);
+    }
+
+    if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
+      return "No bounds";
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    return `${width.toFixed(3)} x ${height.toFixed(3)} mm`;
+  }
+
+  setWorkspaceStatus(status) {
+    this.workspaceStatus.textContent = status;
+  }
+
+  addDiagnostic(level, title, detail = "") {
+    this.diagnostics.unshift({
+      level,
+      title,
+      detail,
+      time: new Date().toLocaleTimeString(),
+    });
+    this.diagnostics = this.diagnostics.slice(0, 30);
+    this.updateUiState();
+  }
+
+  renderDiagnostics() {
+    this.diagnosticList.replaceChildren();
+
+    if (this.diagnostics.length === 0) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      const detail = document.createElement("span");
+      title.textContent = "No diagnostics";
+      detail.textContent = "Ready";
+      item.append(title, detail);
+      this.diagnosticList.appendChild(item);
+      return;
+    }
+
+    for (const diagnostic of this.diagnostics) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      const detail = document.createElement("span");
+      title.textContent = diagnostic.title;
+      detail.textContent = `${diagnostic.time} · ${diagnostic.level}${diagnostic.detail ? ` · ${diagnostic.detail}` : ""}`;
+      item.append(title, detail);
+      this.diagnosticList.appendChild(item);
+    }
+  }
+
+  renderFileList() {
+    this.fileList.replaceChildren();
+
+    if (this.layers.length === 0) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      const detail = document.createElement("span");
+      title.textContent = "No files";
+      detail.textContent = "Ready";
+      item.append(title, detail);
+      this.fileList.appendChild(item);
+      return;
+    }
+
+    this.layers.forEach((layer, index) => {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      const detail = document.createElement("span");
+      title.textContent = layer.name;
+      detail.textContent = `#${index + 1} · ${layer.visible ? "visible" : "hidden"}`;
+      item.append(title, detail);
+      this.fileList.appendChild(item);
+    });
+  }
+
+  setActivePanel(panelName) {
+    if (!panelName) return;
+    this.activePanel = panelName;
+
+    this.panelTabs.forEach((button) => {
+      button.classList.toggle("active", button.dataset.panelTab === panelName);
+    });
+
+    this.panelSections.forEach((section) => {
+      section.classList.toggle("active", section.dataset.panel === panelName);
+    });
+  }
+
+  toggleCanvasTheme() {
+    this.isCanvasLight = !this.isCanvasLight;
+    this.updateCanvasTheme();
+  }
+
+  updateCanvasTheme() {
+    this.viewerSurface.classList.toggle("canvas-light", this.isCanvasLight);
+
+    const label = this.isCanvasLight
+      ? "Switch to black canvas"
+      : "Switch to white canvas";
+    this.canvasThemeToggle.setAttribute("aria-label", label);
+    this.canvasThemeToggle.setAttribute("aria-pressed", String(this.isCanvasLight));
+    this.canvasThemeToggle.title = label;
+    this.canvasThemeToggle.replaceChildren();
+
+    const icon = document.createElement("i");
+    icon.setAttribute("data-lucide", this.isCanvasLight ? "moon" : "sun");
+    this.canvasThemeToggle.appendChild(icon);
+    this.refreshIcons();
+  }
+
+  toggleRuler() {
+    this.isRulerActive = !this.isRulerActive;
+    if (!this.isRulerActive) {
+      this.rulerStartPoint = null;
+      this.rulerHoverPoint = null;
+    }
+
+    this.renderMeasurements();
+    this.updateRulerControls();
+  }
+
+  clearRulerMeasurements() {
+    this.measurements = [];
+    this.rulerStartPoint = null;
+    this.rulerHoverPoint = null;
+    this.renderMeasurements();
+    this.updateRulerControls();
+  }
+
+  updateRulerControls() {
+    const label = this.isRulerActive ? "Disable ruler" : "Enable ruler";
+    this.dropZone.classList.toggle("ruler-active", this.isRulerActive);
+    this.rulerToggleBtn.setAttribute("aria-label", label);
+    this.rulerToggleBtn.setAttribute("aria-pressed", String(this.isRulerActive));
+    this.rulerToggleBtn.title = label;
+    this.rulerClearBtn.disabled =
+      this.measurements.length === 0 && this.rulerStartPoint === null;
+  }
+
+  toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      return;
+    }
+
+    this.dropZone.requestFullscreen?.();
+  }
+
+  updateFullscreenState() {
+    const isFullscreen = Boolean(document.fullscreenElement);
+    const label = isFullscreen ? "Exit fullscreen" : "Enter fullscreen";
+    this.fullscreenBtn.setAttribute("aria-label", label);
+    this.fullscreenBtn.title = label;
+    this.fullscreenBtn.replaceChildren();
+    const icon = document.createElement("i");
+    icon.setAttribute("data-lucide", isFullscreen ? "minimize-2" : "maximize-2");
+    this.fullscreenBtn.appendChild(icon);
+    this.refreshIcons();
+  }
+
   async handleFileUpload(files) {
     const MAX_FILE_SIZE = 300 * 1024 * 1024; // 300 MB
     const oversizedFiles = [];
     const validFiles = [];
+
+    this.setWorkspaceStatus("Loading files");
 
     // Validate file sizes
     for (const file of files) {
@@ -246,6 +535,7 @@ export class GerberViewer {
           await this.addLayer(file.name, content);
         } catch (error) {
           console.error(`Failed to load file ${file.name}:`, error);
+          this.addDiagnostic("error", file.name, error.message);
           this.showError(`Failed to load file ${file.name}: ${error.message}`);
         }
       });
@@ -256,7 +546,10 @@ export class GerberViewer {
       this.renderLayerList();
       this.render();
       this.fitView();
+      this.addDiagnostic("info", "Files loaded", `${validFiles.length} processed`);
     }
+
+    this.updateUiState();
 
     // Clear file input
     this.fileInput.value = "";
@@ -302,12 +595,14 @@ export class GerberViewer {
       clearTimeout(this.notificationTimeout);
     }
 
-    this.notification.classList.remove("alert-warning", "alert-danger", "show");
-    this.notification.classList.add(`alert-${variant}`);
+    this.notification.classList.remove("danger", "show");
+    if (variant === "danger") {
+      this.notification.classList.add("danger");
+    }
     this.notificationTitle.textContent = title;
     this.notificationMessage.replaceChildren();
     renderMessage(this.notificationMessage);
-    this.notification.style.display = "block";
+    this.addDiagnostic(variant, title, this.notificationMessage.textContent.trim());
 
     requestAnimationFrame(() => {
       this.notification.classList.add("show");
@@ -325,8 +620,7 @@ export class GerberViewer {
     }
 
     this.notification.classList.remove("show");
-    this.notification.style.display = "none";
-    this.notificationTitle.textContent = "Warning";
+    this.notificationTitle.textContent = "Notice";
   }
 
   async addLayer(name, content) {
@@ -359,6 +653,7 @@ export class GerberViewer {
       };
 
       this.layers.push(layer);
+      this.updateUiState();
     } catch (error) {
       console.error(`[Layer] Failed to add layer ${name}:`, error);
       throw error;
@@ -396,9 +691,83 @@ export class GerberViewer {
         this.camera.offsetY,
         this.globalAlpha,
       );
+      this.zoomReadout.textContent = this.formatZoom();
     } catch (error) {
       console.error("[Render] Failed to render:", error);
+      this.addDiagnostic("error", "Render failed", error.message);
     }
+
+    this.renderMeasurements();
+  }
+
+  renderMeasurements() {
+    const rect = this.canvas.getBoundingClientRect();
+    this.measurementOverlay.replaceChildren();
+
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+
+    this.measurementOverlay.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
+
+    for (const measurement of this.measurements) {
+      this.drawMeasurement(measurement.start, measurement.end, false);
+    }
+
+    if (this.rulerStartPoint) {
+      this.drawMeasurementPoint(this.rulerStartPoint);
+      if (this.rulerHoverPoint) {
+        this.drawMeasurement(this.rulerStartPoint, this.rulerHoverPoint, true);
+      }
+    }
+  }
+
+  drawMeasurement(start, end, isPreview) {
+    const startPoint = this.worldToCanvasPoint(start);
+    const endPoint = this.worldToCanvasPoint(end);
+    if (!startPoint || !endPoint) return;
+
+    const line = this.createSvgElement("line");
+    line.setAttribute("x1", startPoint.x);
+    line.setAttribute("y1", startPoint.y);
+    line.setAttribute("x2", endPoint.x);
+    line.setAttribute("y2", endPoint.y);
+    if (isPreview) {
+      line.setAttribute("stroke-dasharray", "5 5");
+      line.setAttribute("opacity", "0.7");
+    }
+    this.measurementOverlay.appendChild(line);
+
+    this.drawMeasurementPoint(start);
+    this.drawMeasurementPoint(end);
+
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const label = this.createSvgElement("text");
+    label.textContent = this.formatMeasurementLength(distance);
+    label.setAttribute("x", (startPoint.x + endPoint.x) / 2);
+    label.setAttribute("y", (startPoint.y + endPoint.y) / 2 - 8);
+    label.setAttribute("text-anchor", "middle");
+    this.measurementOverlay.appendChild(label);
+  }
+
+  drawMeasurementPoint(point) {
+    const canvasPoint = this.worldToCanvasPoint(point);
+    if (!canvasPoint) return;
+
+    const circle = this.createSvgElement("circle");
+    circle.setAttribute("cx", canvasPoint.x);
+    circle.setAttribute("cy", canvasPoint.y);
+    circle.setAttribute("r", "4");
+    this.measurementOverlay.appendChild(circle);
+  }
+
+  createSvgElement(tagName) {
+    return document.createElementNS("http://www.w3.org/2000/svg", tagName);
+  }
+
+  formatMeasurementLength(length) {
+    const decimals = length >= 10 ? 2 : 3;
+    return `${length.toFixed(decimals)} mm`;
   }
 
   getSelectedLayerIds() {
@@ -412,23 +781,33 @@ export class GerberViewer {
   }
 
   fitView() {
-    // Get selected layer IDs
+    const fitView = this.calculateFitView();
+    if (!fitView) return;
+
+    this.camera.zoom = this.clampZoom(fitView.zoom);
+    this.fitViewZoom = this.camera.zoom;
+    this.camera.offsetX = -fitView.centerX * this.camera.zoom;
+    this.camera.offsetY = -fitView.centerY * this.camera.zoom;
+
+    this.render();
+    this.updateUiState();
+  }
+
+  getFitViewZoom() {
+    const fitView = this.calculateFitView();
+    if (!fitView) return null;
+    return this.clampZoom(fitView.zoom);
+  }
+
+  calculateFitView() {
     const selectedLayerIds = this.getSelectedLayerIds();
+    if (selectedLayerIds.size === 0) return null;
 
-    if (selectedLayerIds.size === 0) {
-      return;
-    }
-
-    // Get selected layers
     const selectedLayers = this.layers.filter((layer) =>
       selectedLayerIds.has(layer.id),
     );
+    if (selectedLayers.length === 0) return null;
 
-    if (selectedLayers.length === 0) {
-      return;
-    }
-
-    // Calculate combined bounds from all selected layers
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
@@ -447,9 +826,11 @@ export class GerberViewer {
       !isFinite(minX) ||
       !isFinite(maxX) ||
       !isFinite(minY) ||
-      !isFinite(maxY)
+      !isFinite(maxY) ||
+      this.canvas.width === 0 ||
+      this.canvas.height === 0
     ) {
-      return;
+      return null;
     }
 
     const boundsWidth = maxX - minX;
@@ -457,20 +838,9 @@ export class GerberViewer {
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
 
-    if (this.canvas.width === 0 || this.canvas.height === 0) {
-      return;
-    }
-
     if (boundsWidth === 0 && boundsHeight === 0) {
-      // Can't fit to a single point, just center it
-      this.camera.zoom = this.clampZoom(2.0);
-      this.camera.offsetX = -centerX * this.camera.zoom;
-      this.camera.offsetY = -centerY * this.camera.zoom;
-      this.render();
-      return;
+      return { centerX, centerY, zoom: 2.0 };
     }
-
-    const canvasAspect = this.canvas.width / this.canvas.height;
 
     let zoom;
     if (boundsWidth === 0) {
@@ -478,19 +848,15 @@ export class GerberViewer {
     } else if (boundsHeight === 0) {
       zoom = (2.0 / boundsWidth) * 0.9;
     } else {
+      const canvasAspect = this.canvas.width / this.canvas.height;
       const boundsAspect = boundsWidth / boundsHeight;
-      if (boundsAspect > canvasAspect) {
-        zoom = (2.0 / boundsWidth) * 0.9;
-      } else {
-        zoom = (2.0 / boundsHeight) * 0.9;
-      }
+      zoom =
+        boundsAspect > canvasAspect
+          ? (2.0 / boundsWidth) * 0.9
+          : (2.0 / boundsHeight) * 0.9;
     }
 
-    this.camera.zoom = this.clampZoom(zoom);
-    this.camera.offsetX = -centerX * this.camera.zoom;
-    this.camera.offsetY = -centerY * this.camera.zoom;
-
-    this.render();
+    return { centerX, centerY, zoom };
   }
 
   handleWheel(e) {
@@ -544,6 +910,13 @@ export class GerberViewer {
   }
 
   handleMouseDown(e) {
+    if (this.isRulerActive) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      this.handleRulerCanvasClick(e.clientX, e.clientY);
+      return;
+    }
+
     if (e.button === 2) return; // Ignore right-click
     this.isPanning = true;
     this.lastMousePos.x = e.clientX;
@@ -551,19 +924,99 @@ export class GerberViewer {
   }
 
   handleMouseMove(e) {
+    this.updateCursorReadout(e.clientX, e.clientY);
+
+    if (this.isRulerActive) {
+      if (this.rulerStartPoint) {
+        this.rulerHoverPoint = this.canvasPointToWorld(e.clientX, e.clientY);
+        this.renderMeasurements();
+      }
+      return;
+    }
+
     if (!this.isPanning) return;
 
     const deltaX = e.clientX - this.lastMousePos.x;
     const deltaY = e.clientY - this.lastMousePos.y;
 
     // Visual feedback during drag
-    this.canvas.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    const transform = `translate(${deltaX}px, ${deltaY}px)`;
+    this.canvas.style.transform = transform;
+    this.measurementOverlay.style.transform = transform;
+  }
+
+  updateCursorReadout(clientX, clientY) {
+    const worldPoint = this.canvasPointToWorld(clientX, clientY);
+    if (!worldPoint) return;
+
+    this.cursorReadout.textContent = `${worldPoint.x.toFixed(3)}, ${worldPoint.y.toFixed(3)}`;
+  }
+
+  handleRulerCanvasClick(clientX, clientY) {
+    const point = this.canvasPointToWorld(clientX, clientY);
+    if (!point) return;
+
+    if (!this.rulerStartPoint) {
+      this.rulerStartPoint = point;
+      this.rulerHoverPoint = null;
+    } else {
+      this.measurements.push({
+        start: this.rulerStartPoint,
+        end: point,
+      });
+      this.rulerStartPoint = null;
+      this.rulerHoverPoint = null;
+    }
+
+    this.renderMeasurements();
+    this.updateRulerControls();
+  }
+
+  canvasPointToWorld(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return null;
+    }
+
+    const mxScreen = clientX - rect.left;
+    const myScreen = clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const mouseXNDC = ((mxScreen - centerX) / rect.width) * 2;
+    const mouseYNDC = -((myScreen - centerY) / rect.height) * 2;
+    const aspect = this.canvas.width / this.canvas.height;
+    const correctedX = aspect > 1.0 ? mouseXNDC * aspect : mouseXNDC;
+    const correctedY = aspect > 1.0 ? mouseYNDC : mouseYNDC / aspect;
+    const worldX = (correctedX - this.camera.offsetX) / this.camera.zoom;
+    const worldY = (correctedY - this.camera.offsetY) / this.camera.zoom;
+    return { x: worldX, y: worldY };
+  }
+
+  worldToCanvasPoint(point) {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return null;
+    }
+
+    const aspect = this.canvas.width / this.canvas.height;
+    const correctedX = point.x * this.camera.zoom + this.camera.offsetX;
+    const correctedY = point.y * this.camera.zoom + this.camera.offsetY;
+    const ndcX = aspect > 1.0 ? correctedX / aspect : correctedX;
+    const ndcY = aspect > 1.0 ? correctedY : correctedY * aspect;
+    return {
+      x: ((ndcX + 1) / 2) * rect.width,
+      y: ((1 - ndcY) / 2) * rect.height,
+    };
   }
 
   handleMouseUp(e) {
     if (!this.isPanning) return;
 
     this.isPanning = false;
+
+    // Reset transform
+    this.canvas.style.transform = "";
+    this.measurementOverlay.style.transform = "";
 
     const canvasRect = this.canvas.getBoundingClientRect();
     if (canvasRect.width === 0 || canvasRect.height === 0) {
@@ -572,9 +1025,6 @@ export class GerberViewer {
 
     const deltaX = e.clientX - this.lastMousePos.x;
     const deltaY = e.clientY - this.lastMousePos.y;
-
-    // Reset transform
-    this.canvas.style.transform = "";
 
     const deltaXNDC = (deltaX / canvasRect.width) * 2;
     const deltaYNDC = (-deltaY / canvasRect.height) * 2;
@@ -740,6 +1190,7 @@ export class GerberViewer {
 
     layer.color = [r, g, b];
     this.render();
+    this.updateUiState();
   }
 
   updateGlobalAlpha(alpha) {
@@ -759,6 +1210,9 @@ export class GerberViewer {
 
         // remove from JS array only if WASM removal succeeded
         this.layers.splice(index, 1);
+        if (this.layers.length === 0) {
+          this.fitViewZoom = null;
+        }
       } catch (error) {
         console.error(`[Layer] Failed to remove layer ${layer.name}:`, error);
         return;
@@ -767,6 +1221,7 @@ export class GerberViewer {
 
     this.renderLayerList();
     this.render();
+    this.updateUiState();
   }
 
   clearAllLayers() {
@@ -776,10 +1231,13 @@ export class GerberViewer {
 
       this.layers = [];
       this.nextColorIndex = 0;
+      this.fitViewZoom = null;
       this.renderLayerList();
       this.render();
+      this.updateUiState();
     } catch (error) {
       console.error("[Layer] Failed to clear all layers:", error);
+      this.addDiagnostic("error", "Clear failed", error.message);
     }
   }
 
@@ -789,6 +1247,7 @@ export class GerberViewer {
     });
     this.renderLayerList();
     this.render();
+    this.updateUiState();
   }
 
   unselectAllLayerCheckboxes() {
@@ -797,10 +1256,11 @@ export class GerberViewer {
     });
     this.renderLayerList();
     this.render();
+    this.updateUiState();
   }
 
   renderLayerList() {
-    this.layerList.innerHTML = "";
+    this.layerList.replaceChildren();
 
     this.layers.forEach((layer) => {
       const li = document.createElement("li");
@@ -824,28 +1284,33 @@ export class GerberViewer {
       checkbox.addEventListener("change", () => {
         layer.visible = checkbox.checked;
         this.render();
+        this.updateUiState();
       });
 
       // Label
       const label = document.createElement("label");
       label.className = "layer-label";
-      label.textContent = layer.name;
-      label.style.cursor = "pointer";
+      const layerName = document.createElement("strong");
+      const layerMeta = document.createElement("span");
+      layerName.textContent = layer.name;
+      layerMeta.textContent = this.formatLayerBounds(layer);
+      label.append(layerName, layerMeta);
       label.addEventListener("click", () => {
         layer.visible = !layer.visible;
         checkbox.checked = layer.visible;
         this.render();
+        this.updateUiState();
       });
 
       // Delete button
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "layer-delete-btn";
-      deleteBtn.innerHTML = `
-        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <line x1="2" y1="6" x2="10" y2="6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-      `;
+      deleteBtn.type = "button";
+      deleteBtn.className = "icon-button layer-delete-btn";
       deleteBtn.setAttribute("aria-label", "Delete layer");
+      deleteBtn.title = "Delete layer";
+      const deleteIcon = document.createElement("i");
+      deleteIcon.setAttribute("data-lucide", "trash-2");
+      deleteBtn.appendChild(deleteIcon);
       deleteBtn.addEventListener("click", () => {
         this.deleteLayer(layer.id);
       });
@@ -856,6 +1321,33 @@ export class GerberViewer {
       li.appendChild(deleteBtn);
       this.layerList.appendChild(li);
     });
+
+    if (this.layers.length === 0) {
+      const li = document.createElement("li");
+      li.className = "layer-item";
+      li.style.gridTemplateColumns = "1fr";
+      const label = document.createElement("label");
+      label.className = "layer-label";
+      const title = document.createElement("strong");
+      const detail = document.createElement("span");
+      title.textContent = "No layers";
+      detail.textContent = "Ready";
+      label.append(title, detail);
+      li.appendChild(label);
+      this.layerList.appendChild(li);
+    }
+
+    this.refreshIcons();
+  }
+
+  formatLayerBounds(layer) {
+    if (!layer.bounds) {
+      return layer.visible ? "visible" : "hidden";
+    }
+
+    const width = layer.bounds.maxX - layer.bounds.minX;
+    const height = layer.bounds.maxY - layer.bounds.minY;
+    return `${layer.visible ? "visible" : "hidden"} · ${width.toFixed(3)} x ${height.toFixed(3)} mm`;
   }
 
   rgbToHex(rgb) {
@@ -892,6 +1384,7 @@ export class GerberViewer {
     const clampedWidth = this.clampDrawerWidth(width);
     this.drawerCurrentWidth = clampedWidth;
     this.drawer.style.width = `${clampedWidth}px`;
+    this.dropZone.style.setProperty("--panel-width", `${clampedWidth}px`);
   }
 
   startDrawerResize(e) {
@@ -936,10 +1429,11 @@ export class GerberViewer {
     window.dispatchEvent(new Event("resize"));
   }
 
-  toggleDrawer() {
+  toggleDrawer(forceOpen = null) {
     const isCollapsed = this.drawer.classList.contains("collapsed");
+    const shouldOpen = forceOpen === null ? isCollapsed : forceOpen;
 
-    if (isCollapsed) {
+    if (shouldOpen) {
       // Expand drawer
       this.drawer.classList.remove("collapsed");
       this.setDrawerWidth(this.drawerCurrentWidth);
@@ -962,10 +1456,18 @@ export class GerberViewer {
 
   updateDrawerToggleState() {
     const isCollapsed = this.drawer.classList.contains("collapsed");
-    const label = isCollapsed ? "Show drawer" : "Hide drawer";
+    const label = isCollapsed ? "Show panel" : "Hide panel";
     this.drawerToggleBtn.setAttribute("aria-label", label);
     this.drawerToggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
     this.drawerToggleBtn.title = label;
+    this.drawerToggleBtn.replaceChildren();
+    const icon = document.createElement("i");
+    icon.setAttribute(
+      "data-lucide",
+      isCollapsed ? "panel-right-open" : "panel-right-close",
+    );
+    this.drawerToggleBtn.appendChild(icon);
+    this.refreshIcons();
   }
 
   // File drop handlers
@@ -973,16 +1475,21 @@ export class GerberViewer {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "copy";
+    this.dropZone.classList.add("drag-active");
   }
 
   handleDragLeave(e) {
     e.preventDefault();
     e.stopPropagation();
+    if (!this.dropZone.contains(e.relatedTarget)) {
+      this.dropZone.classList.remove("drag-active");
+    }
   }
 
   handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
+    this.dropZone.classList.remove("drag-active");
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
