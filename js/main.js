@@ -1,5 +1,30 @@
 const NOTIFICATION_DURATION_MS = 2000;
 const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024;
+const ZIP_MIME_TYPES = new Set([
+  "application/zip",
+  "application/x-zip-compressed",
+]);
+const GERBER_FILE_EXTENSIONS = new Set([
+  ".art",
+  ".cmp",
+  ".drd",
+  ".gbl",
+  ".gbo",
+  ".gbr",
+  ".gbs",
+  ".gbp",
+  ".gdo",
+  ".ger",
+  ".gko",
+  ".gtl",
+  ".gto",
+  ".gtp",
+  ".gts",
+  ".plc",
+  ".sol",
+  ".stc",
+  ".sts",
+]);
 
 export class GerberViewer {
   constructor() {
@@ -22,10 +47,11 @@ export class GerberViewer {
     this.measurementUnitToggle = document.getElementById("measurement-unit-toggle");
     this.fullscreenBtn = document.getElementById("fullscreen-btn");
     this.selectAllBtn = document.getElementById("select-all-btn");
-    this.selectFrontBtn = document.getElementById("select-front-btn");
-    this.selectBackBtn = document.getElementById("select-back-btn");
+    this.selectTopBtn = document.getElementById("select-top-btn");
+    this.selectBottomBtn = document.getElementById("select-bottom-btn");
     this.unselectAllBtn = document.getElementById("unselect-all-btn");
     this.clearAllBtn = document.getElementById("clear-all-btn");
+    this.clearDiagnosticsBtn = document.getElementById("clear-diagnostics-btn");
     this.alphaSlider = document.getElementById("alpha-slider");
     this.alphaValue = document.getElementById("alpha-value");
     this.layerList = document.getElementById("layer-list");
@@ -46,8 +72,8 @@ export class GerberViewer {
     this.cursorReadout = document.getElementById("cursor-readout");
     this.boundsReadout = document.getElementById("bounds-readout");
     this.diagnosticsCount = document.getElementById("diagnostics-count");
-    this.frontFilterInput = document.getElementById("front-filter-input");
-    this.backFilterInput = document.getElementById("back-filter-input");
+    this.topFilterInput = document.getElementById("top-filter-input");
+    this.bottomFilterInput = document.getElementById("bottom-filter-input");
     this.panelTabs = Array.from(document.querySelectorAll("[data-panel-tab]"));
     this.panelSections = Array.from(document.querySelectorAll("[data-panel]"));
 
@@ -162,6 +188,7 @@ export class GerberViewer {
     this.updateMeasurementUnitControl();
     this.updateViewFlipControls();
     this.render();
+    this.loadInitialUrlSource();
   }
 
   resizeCanvas() {
@@ -248,12 +275,12 @@ export class GerberViewer {
       this.selectAllLayerCheckboxes();
     });
 
-    this.selectFrontBtn.addEventListener("click", () => {
-      this.selectLayersByFilter("front");
+    this.selectTopBtn.addEventListener("click", () => {
+      this.selectLayersByFilter("top");
     });
 
-    this.selectBackBtn.addEventListener("click", () => {
-      this.selectLayersByFilter("back");
+    this.selectBottomBtn.addEventListener("click", () => {
+      this.selectLayersByFilter("bottom");
     });
 
     this.unselectAllBtn.addEventListener("click", () => {
@@ -264,6 +291,10 @@ export class GerberViewer {
       this.clearAllLayers();
     });
 
+    this.clearDiagnosticsBtn.addEventListener("click", () => {
+      this.clearDiagnostics();
+    });
+
     // Alpha slider
     this.alphaSlider.addEventListener("input", (e) => {
       const alpha = parseInt(e.target.value) / 100;
@@ -271,12 +302,12 @@ export class GerberViewer {
       this.updateGlobalAlpha(alpha);
     });
 
-    this.frontFilterInput.addEventListener("input", () => {
-      this.updateLayerFilter("front", this.frontFilterInput.value);
+    this.topFilterInput.addEventListener("input", () => {
+      this.updateLayerFilter("top", this.topFilterInput.value);
     });
 
-    this.backFilterInput.addEventListener("input", () => {
-      this.updateLayerFilter("back", this.backFilterInput.value);
+    this.bottomFilterInput.addEventListener("input", () => {
+      this.updateLayerFilter("bottom", this.bottomFilterInput.value);
     });
 
     this.notificationCloseBtn.addEventListener("click", () => {
@@ -365,8 +396,8 @@ export class GerberViewer {
 
   loadLayerFilters() {
     const defaults = {
-      front: "front top .gtl .gto .gts .gtp #TOP",
-      back: "back bottom .gbl .gbo .gbs .gbp #BOT",
+      top: "top .gtl .gto .gts .gtp #TOP",
+      bottom: "bottom .gbl .gbo .gbs .gbp #BOT",
     };
 
     try {
@@ -374,8 +405,18 @@ export class GerberViewer {
         window.localStorage.getItem(this.layerFilterStorageKey) || "{}",
       );
       return {
-        front: typeof stored.front === "string" ? stored.front : defaults.front,
-        back: typeof stored.back === "string" ? stored.back : defaults.back,
+        top:
+          typeof stored.top === "string"
+            ? stored.top
+            : typeof stored.front === "string"
+              ? stored.front
+              : defaults.top,
+        bottom:
+          typeof stored.bottom === "string"
+            ? stored.bottom
+            : typeof stored.back === "string"
+              ? stored.back
+              : defaults.bottom,
       };
     } catch {
       return defaults;
@@ -390,8 +431,8 @@ export class GerberViewer {
   }
 
   syncFilterInputs() {
-    this.frontFilterInput.value = this.layerFilters.front;
-    this.backFilterInput.value = this.layerFilters.back;
+    this.topFilterInput.value = this.layerFilters.top;
+    this.bottomFilterInput.value = this.layerFilters.bottom;
   }
 
   updateLayerFilter(kind, value) {
@@ -483,6 +524,10 @@ export class GerberViewer {
   }
 
   addDiagnostic(level, title, detail = "") {
+    if (level === "info") {
+      return;
+    }
+
     this.diagnostics.unshift({
       level,
       title,
@@ -516,6 +561,11 @@ export class GerberViewer {
       item.append(title, detail);
       this.diagnosticList.appendChild(item);
     }
+  }
+
+  clearDiagnostics() {
+    this.diagnostics = [];
+    this.updateUiState();
   }
 
   setActivePanel(panelName) {
@@ -772,6 +822,58 @@ export class GerberViewer {
       `Max ${this.formatFileSize(MAX_FILE_SIZE_BYTES)} per file`;
   }
 
+  async loadInitialUrlSource() {
+    const sourceUrl = this.getInitialSourceUrl();
+    if (!sourceUrl) return;
+
+    try {
+      const url = new URL(sourceUrl);
+      await this.loadRemoteSource(url);
+    } catch (error) {
+      this.handleLayerLoadError(sourceUrl, error);
+    }
+  }
+
+  getInitialSourceUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("url") || params.get("source") || params.get("file");
+  }
+
+  async loadRemoteSource(url) {
+    this.setWorkspaceStatus("Loading remote file");
+    const response = await fetch(url.href);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} while loading ${url.href}`);
+    }
+
+    const fileName = this.getBaseFileName(decodeURIComponent(url.pathname));
+    const file = new File([await response.blob()], fileName, {
+      type: response.headers.get("content-type") || "",
+    });
+
+    const layerSources = await this.collectLayerSources([file]);
+    if (layerSources.length === 0) {
+      this.updateUiState();
+      return;
+    }
+
+    const results = await Promise.all(
+      layerSources.map((source) =>
+        this.loadLayerSource(source.name, source.readText),
+      ),
+    );
+    const loadedCount = results.filter(Boolean).length;
+
+    if (loadedCount > 0) {
+      this.renderLayerList();
+      this.render();
+      this.fitView();
+      this.addDiagnostic("info", "Remote file loaded", `${loadedCount} processed`);
+    }
+
+    this.updateUiState();
+  }
+
   async handleFileUpload(files) {
     const oversizedFiles = [];
     const validFiles = [];
@@ -796,39 +898,147 @@ export class GerberViewer {
       this.showFileSizeWarning(oversizedFiles);
     }
 
-    // Process valid files in parallel
     if (validFiles.length > 0) {
-      const promises = validFiles.map(async (file) => {
-        try {
-          const content = await file.text();
-          await this.addLayer(file.name, content);
-        } catch (error) {
-          const message = this.getErrorMessage(error);
-          if (this.isNoGeometryError(message)) {
-            console.warn(`Skipped file ${file.name}:`, error);
-            this.addDiagnostic("warning", file.name, message);
-            return;
-          }
+      const layerSources = await this.collectLayerSources(validFiles);
 
-          console.error(`Failed to load file ${file.name}:`, error);
-          this.addDiagnostic("error", file.name, message);
-          this.showError(`Failed to load file ${file.name}: ${message}`);
+      if (layerSources.length > 0) {
+        const results = await Promise.all(
+          layerSources.map((source) =>
+            this.loadLayerSource(source.name, source.readText),
+          ),
+        );
+        const loadedCount = results.filter(Boolean).length;
+
+        if (loadedCount > 0) {
+          this.renderLayerList();
+          this.render();
+          this.fitView();
+          this.addDiagnostic("info", "Files loaded", `${loadedCount} processed`);
         }
-      });
-
-      await Promise.all(promises);
-
-      // Render once after all layers are added
-      this.renderLayerList();
-      this.render();
-      this.fitView();
-      this.addDiagnostic("info", "Files loaded", `${validFiles.length} processed`);
+      }
     }
 
     this.updateUiState();
 
     // Clear file input
     this.fileInput.value = "";
+  }
+
+  async collectLayerSources(files) {
+    const layerSources = [];
+
+    for (const file of files) {
+      if (this.isZipFile(file)) {
+        layerSources.push(...(await this.collectZipLayerSources(file)));
+        continue;
+      }
+
+      layerSources.push({
+        name: file.name,
+        readText: () => file.text(),
+      });
+    }
+
+    return layerSources;
+  }
+
+  async collectZipLayerSources(file) {
+    if (!window.JSZip) {
+      this.handleLayerLoadError(file.name, new Error("ZIP support failed to load"));
+      return [];
+    }
+
+    try {
+      const zip = await window.JSZip.loadAsync(file);
+      const entries = Object.values(zip.files)
+        .filter(
+          (entry) =>
+            !entry.dir &&
+            !this.isArchiveMetadataPath(entry.name) &&
+            this.isSupportedGerberPath(entry.name),
+        )
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        );
+
+      if (entries.length === 0) {
+        this.addDiagnostic(
+          "warning",
+          file.name,
+          "No supported Gerber files found in archive",
+        );
+        return [];
+      }
+
+      this.addDiagnostic(
+        "info",
+        file.name,
+        `${entries.length} Gerber files found in archive`,
+      );
+
+      return entries.map((entry) => ({
+        name: this.getBaseFileName(entry.name),
+        readText: () => entry.async("string"),
+      }));
+    } catch (error) {
+      this.handleLayerLoadError(file.name, error);
+      return [];
+    }
+  }
+
+  async loadLayerSource(name, readText) {
+    try {
+      const content = await readText();
+      await this.addLayer(name, content);
+      return true;
+    } catch (error) {
+      this.handleLayerLoadError(name, error);
+      return false;
+    }
+  }
+
+  handleLayerLoadError(name, error) {
+    const message = this.getErrorMessage(error);
+    if (this.isNoGeometryError(message)) {
+      console.warn(`Skipped file ${name}:`, error);
+      this.addDiagnostic("warning", name, message);
+      return;
+    }
+
+    console.error(`Failed to load file ${name}:`, error);
+    this.addDiagnostic("error", name, message);
+    this.showError(`Failed to load file ${name}: ${message}`);
+  }
+
+  isZipFile(file) {
+    return this.getFileExtension(file.name) === ".zip" || ZIP_MIME_TYPES.has(file.type);
+  }
+
+  isSupportedGerberPath(path) {
+    return GERBER_FILE_EXTENSIONS.has(this.getFileExtension(path));
+  }
+
+  isArchiveMetadataPath(path) {
+    const normalizedPath = path.replaceAll("\\", "/");
+    const fileName = normalizedPath.split("/").pop() ?? normalizedPath;
+    return normalizedPath.startsWith("__MACOSX/") || fileName.startsWith("._");
+  }
+
+  getFileExtension(path) {
+    const fileName = this.getBaseFileName(path);
+    const dotIndex = fileName.lastIndexOf(".");
+    if (dotIndex <= 0) {
+      return "";
+    }
+
+    return fileName.slice(dotIndex).toLowerCase();
+  }
+
+  getBaseFileName(path) {
+    return path.split(/[\\/]/).pop() ?? path;
   }
 
   formatFileSize(bytes) {
@@ -953,6 +1163,11 @@ export class GerberViewer {
       this.layers.push(layer);
       this.updateUiState();
     } catch (error) {
+      if (this.isNoGeometryError(this.getErrorMessage(error))) {
+        console.warn(`[Layer] Skipped layer ${name}:`, error);
+        throw error;
+      }
+
       console.error(`[Layer] Failed to add layer ${name}:`, error);
       throw error;
     }
@@ -1904,6 +2119,7 @@ export class GerberViewer {
 
   setDrawerWidth(width, { commitLayout = true } = {}) {
     const clampedWidth = this.clampDrawerWidth(width);
+    this.dropZone.style.setProperty("--panel-overlay-width", `${clampedWidth}px`);
     if (commitLayout) {
       this.drawerCurrentWidth = clampedWidth;
       this.drawerPendingWidth = null;
@@ -1936,6 +2152,7 @@ export class GerberViewer {
 
   setDrawerHeight(height, { commitLayout = true } = {}) {
     const clampedHeight = this.clampDrawerHeight(height);
+    this.dropZone.style.setProperty("--panel-overlay-height", `${clampedHeight}px`);
     if (commitLayout) {
       this.drawerCurrentHeight = clampedHeight;
       this.drawerPendingHeight = null;
