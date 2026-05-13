@@ -13,6 +13,7 @@ export class GerberViewer {
     this.canvasThemeToggle = document.getElementById("canvas-theme-toggle");
     this.rulerToggleBtn = document.getElementById("ruler-toggle-btn");
     this.rulerClearBtn = document.getElementById("ruler-clear-btn");
+    this.measurementUnitToggle = document.getElementById("measurement-unit-toggle");
     this.fullscreenBtn = document.getElementById("fullscreen-btn");
     this.selectAllBtn = document.getElementById("select-all-btn");
     this.unselectAllBtn = document.getElementById("unselect-all-btn");
@@ -105,6 +106,7 @@ export class GerberViewer {
     this.rulerStartPoint = null;
     this.rulerHoverPoint = null;
     this.measurements = [];
+    this.measurementUnit = "mm";
   }
 
   async init() {
@@ -133,6 +135,7 @@ export class GerberViewer {
     this.refreshIcons();
     this.updateUiState();
     this.updateRulerControls();
+    this.updateMeasurementUnitControl();
     this.render();
   }
 
@@ -184,6 +187,10 @@ export class GerberViewer {
 
     this.rulerClearBtn.addEventListener("click", () => {
       this.clearRulerMeasurements();
+    });
+
+    this.measurementUnitToggle.addEventListener("click", () => {
+      this.toggleMeasurementUnit();
     });
 
     this.fullscreenBtn.addEventListener("click", () => {
@@ -310,19 +317,16 @@ export class GerberViewer {
 
   formatZoom() {
     if (this.layers.length === 0) {
-      return "100.00%";
+      return "100%";
     }
 
     const fitZoom = this.getFitViewZoom() ?? this.fitViewZoom;
     if (!Number.isFinite(fitZoom) || fitZoom <= 0) {
-      return "100.00%";
+      return "100%";
     }
 
     const zoomPercent = (this.camera.zoom / fitZoom) * 100;
-    if (zoomPercent >= 1000 || zoomPercent < 0.01) {
-      return `${zoomPercent.toExponential(2)}%`;
-    }
-    return `${zoomPercent.toFixed(2)}%`;
+    return `${Math.trunc(zoomPercent)}%`;
   }
 
   formatCombinedBounds() {
@@ -469,6 +473,22 @@ export class GerberViewer {
     this.rulerHoverPoint = null;
     this.renderMeasurements();
     this.updateRulerControls();
+  }
+
+  toggleMeasurementUnit() {
+    this.measurementUnit = this.measurementUnit === "mm" ? "inch" : "mm";
+    this.updateMeasurementUnitControl();
+    this.renderMeasurements();
+  }
+
+  updateMeasurementUnitControl() {
+    const isInch = this.measurementUnit === "inch";
+    const label = isInch
+      ? "Show measurements in millimeters"
+      : "Show measurements in inches";
+    this.measurementUnitToggle.textContent = isInch ? "in" : "mm";
+    this.measurementUnitToggle.setAttribute("aria-label", label);
+    this.measurementUnitToggle.title = label;
   }
 
   updateRulerControls() {
@@ -727,15 +747,13 @@ export class GerberViewer {
     const endPoint = this.worldToCanvasPoint(end);
     if (!startPoint || !endPoint) return;
 
-    const line = this.createSvgElement("line");
-    line.setAttribute("x1", startPoint.x);
-    line.setAttribute("y1", startPoint.y);
-    line.setAttribute("x2", endPoint.x);
-    line.setAttribute("y2", endPoint.y);
+    const outline = this.createMeasurementLine(startPoint, endPoint, "measurement-line-outline");
+    const line = this.createMeasurementLine(startPoint, endPoint, "measurement-line");
     if (isPreview) {
-      line.setAttribute("stroke-dasharray", "5 5");
+      outline.setAttribute("opacity", "0.7");
       line.setAttribute("opacity", "0.7");
     }
+    this.measurementOverlay.appendChild(outline);
     this.measurementOverlay.appendChild(line);
 
     this.drawMeasurementPoint(start);
@@ -748,6 +766,16 @@ export class GerberViewer {
     label.setAttribute("y", (startPoint.y + endPoint.y) / 2 - 8);
     label.setAttribute("text-anchor", "middle");
     this.measurementOverlay.appendChild(label);
+  }
+
+  createMeasurementLine(startPoint, endPoint, className) {
+    const line = this.createSvgElement("line");
+    line.setAttribute("class", className);
+    line.setAttribute("x1", startPoint.x);
+    line.setAttribute("y1", startPoint.y);
+    line.setAttribute("x2", endPoint.x);
+    line.setAttribute("y2", endPoint.y);
+    return line;
   }
 
   drawMeasurementPoint(point) {
@@ -766,6 +794,12 @@ export class GerberViewer {
   }
 
   formatMeasurementLength(length) {
+    if (this.measurementUnit === "inch") {
+      const inches = length / 25.4;
+      const decimals = inches >= 1 ? 4 : 5;
+      return `${inches.toFixed(decimals)} in`;
+    }
+
     const decimals = length >= 10 ? 2 : 3;
     return `${length.toFixed(decimals)} mm`;
   }
@@ -954,7 +988,9 @@ export class GerberViewer {
 
   handleRulerCanvasClick(clientX, clientY) {
     const point = this.canvasPointToWorld(clientX, clientY);
-    if (!point) return;
+    if (!point) {
+      return;
+    }
 
     if (!this.rulerStartPoint) {
       this.rulerStartPoint = point;
@@ -966,6 +1002,7 @@ export class GerberViewer {
       });
       this.rulerStartPoint = null;
       this.rulerHoverPoint = null;
+      this.isRulerActive = false;
     }
 
     this.renderMeasurements();

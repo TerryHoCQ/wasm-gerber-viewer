@@ -125,6 +125,7 @@ button {
 .tool-button,
 .chip-button,
 .icon-button,
+.unit-toggle,
 .panel-tab {
   border: 1px solid var(--line);
   background: var(--surface-2);
@@ -176,9 +177,23 @@ button {
   border-radius: 7px;
 }
 
+.unit-toggle {
+  width: 42px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
 .tool-button:hover,
 .chip-button:hover,
 .icon-button:hover,
+.unit-toggle:hover,
 .panel-tab:hover {
   border-color: var(--line-strong);
   background: var(--surface-3);
@@ -186,7 +201,8 @@ button {
 
 .tool-button:disabled,
 .chip-button:disabled,
-.icon-button:disabled {
+.icon-button:disabled,
+.unit-toggle:disabled {
   opacity: 0.42;
   cursor: not-allowed;
 }
@@ -238,7 +254,7 @@ button {
   cursor: crosshair;
 }
 
-.measurement-overlay {
+.app-shell .measurement-overlay {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -247,36 +263,33 @@ button {
   z-index: 4;
 }
 
-.measurement-overlay line {
-  stroke: #5eead4;
-  stroke-width: 1.5;
+.measurement-overlay .measurement-line-outline {
+  stroke: #000;
+  stroke-width: 4px;
+  vector-effect: non-scaling-stroke;
+}
+
+.measurement-overlay .measurement-line {
+  stroke: #fff;
+  stroke-width: 2px;
   vector-effect: non-scaling-stroke;
 }
 
 .measurement-overlay circle {
-  fill: #0d1117;
-  stroke: #5eead4;
-  stroke-width: 1.5;
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 1px;
   vector-effect: non-scaling-stroke;
 }
 
 .measurement-overlay text {
-  fill: #e7edf5;
-  stroke: rgba(13, 17, 23, 0.82);
-  stroke-width: 3px;
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 1px;
   paint-order: stroke;
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-}
-
-.canvas-light .measurement-overlay circle {
-  fill: #f8fafc;
-}
-
-.canvas-light .measurement-overlay text {
-  fill: #0f172a;
-  stroke: rgba(248, 250, 252, 0.86);
 }
 
 .empty-state {
