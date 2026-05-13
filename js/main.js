@@ -451,7 +451,7 @@ export class GerberViewer {
 
     const width = maxX - minX;
     const height = maxY - minY;
-    return `${width.toFixed(3)} x ${height.toFixed(3)} mm`;
+    return this.formatDimensionPair(width, height);
   }
 
   setWorkspaceStatus(status) {
@@ -691,6 +691,8 @@ export class GerberViewer {
     this.measurementUnit = this.measurementUnit === "mm" ? "inch" : "mm";
     this.updateMeasurementUnitControl();
     this.renderMeasurements();
+    this.renderLayerList();
+    this.updateUiState();
   }
 
   updateMeasurementUnitControl() {
@@ -1014,6 +1016,14 @@ export class GerberViewer {
 
     const decimals = length >= 10 ? 2 : 3;
     return `${length.toFixed(decimals)} mm`;
+  }
+
+  formatDimensionPair(widthMm, heightMm) {
+    if (this.measurementUnit === "inch") {
+      return `${(widthMm / 25.4).toFixed(4)} x ${(heightMm / 25.4).toFixed(4)} in`;
+    }
+
+    return `${widthMm.toFixed(3)} x ${heightMm.toFixed(3)} mm`;
   }
 
   getSelectedLayerIds() {
@@ -1715,7 +1725,7 @@ export class GerberViewer {
 
     const width = layer.bounds.maxX - layer.bounds.minX;
     const height = layer.bounds.maxY - layer.bounds.minY;
-    return `${width.toFixed(3)} x ${height.toFixed(3)} mm`;
+    return this.formatDimensionPair(width, height);
   }
 
   rgbToHex(rgb) {
