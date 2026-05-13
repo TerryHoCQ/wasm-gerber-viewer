@@ -62,6 +62,8 @@ export class GerberViewer {
 
     // Layers
     this.layers = [];
+    this.draggedLayerId = null;
+    this.layerDropIndex = null;
 
     // Camera
     this.camera = {
@@ -86,7 +88,7 @@ export class GerberViewer {
 
     // Drawer resize state
     this.isResizingDrawer = false;
-    this.drawerCurrentWidth = 460;
+    this.drawerCurrentWidth = 381;
     this.drawerMinWidth = 200;
     this.drawerMaxWidth = 600;
 
@@ -311,6 +313,17 @@ export class GerberViewer {
       });
     });
 
+    this.layerList.addEventListener("dragover", (e) =>
+      this.handleLayerListDragOver(e),
+    );
+    this.layerList.addEventListener("drop", (e) => this.handleLayerDrop(e));
+    this.layerList.addEventListener("dragleave", (e) => {
+      e.stopPropagation();
+      if (!this.layerList.contains(e.relatedTarget)) {
+        this.clearLayerDropIndicator();
+      }
+    });
+
     // File drop events
     this.dropZone.addEventListener("dragover", (e) => this.handleDragOver(e));
     this.dropZone.addEventListener("dragleave", (e) => this.handleDragLeave(e));
@@ -325,8 +338,8 @@ export class GerberViewer {
 
   loadLayerFilters() {
     const defaults = {
-      front: "front top gtl gto gts gtp",
-      back: "back bottom gbl gbo gbs gbp",
+      front: "front top .gtl .gto .gts .gtp #TOP",
+      back: "back bottom .gbl .gbo .gbs .gbp #BOT",
     };
 
     try {
@@ -362,15 +375,22 @@ export class GerberViewer {
   getFilterTokens(kind) {
     return this.layerFilters[kind]
       .split(/[\s,;|]+/)
-      .map((token) => token.trim().toLowerCase())
+      .map((token) => token.trim())
       .filter(Boolean);
   }
 
   layerMatchesFilter(layer, kind) {
     const tokens = this.getFilterTokens(kind);
     if (tokens.length === 0) return false;
-    const layerName = layer.name.toLowerCase();
-    return tokens.some((token) => layerName.includes(token));
+    const layerName = layer.name;
+    const lowerLayerName = layerName.toLowerCase();
+    return tokens.some((token) => {
+      if (token.startsWith("#") && token.length > 1) {
+        return layerName.includes(token.slice(1));
+      }
+
+      return lowerLayerName.includes(token.toLowerCase());
+    });
   }
 
   updateUiState() {
@@ -1497,13 +1517,123 @@ export class GerberViewer {
     this.updateUiState();
   }
 
+  handleLayerDragStart(event, layerId) {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("input, button")
+    ) {
+      event.preventDefault();
+      return;
+    }
+
+    this.draggedLayerId = layerId;
+    this.layerDropIndex = null;
+    this.dropZone.classList.remove("drag-active");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", layerId);
+    }
+    event.currentTarget.classList.add("dragging");
+  }
+
+  handleLayerDragEnd(event) {
+    event.currentTarget.classList.remove("dragging");
+    this.draggedLayerId = null;
+    this.layerDropIndex = null;
+    this.dropZone.classList.remove("drag-active");
+    this.clearLayerDropIndicator();
+  }
+
+  handleLayerListDragOver(event) {
+    if (!this.draggedLayerId) return;
+
+    const placement = this.getLayerDropPlacement(event.clientY);
+    if (!placement) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    this.layerDropIndex = placement.dropIndex;
+    this.clearLayerDropIndicator();
+    placement.item.classList.add(
+      placement.position === "after" ? "drop-after" : "drop-before",
+    );
+  }
+
+  handleLayerDrop(event) {
+    if (!this.draggedLayerId || this.layerDropIndex === null) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const fromIndex = this.layers.findIndex(
+      (layer) => layer.id === this.draggedLayerId,
+    );
+    if (fromIndex === -1) return;
+
+    let toIndex = this.layerDropIndex;
+    if (fromIndex < toIndex) {
+      toIndex -= 1;
+    }
+
+    if (fromIndex !== toIndex) {
+      const [layer] = this.layers.splice(fromIndex, 1);
+      this.layers.splice(toIndex, 0, layer);
+      this.renderLayerList();
+      this.render();
+      this.updateUiState();
+    }
+
+    this.draggedLayerId = null;
+    this.layerDropIndex = null;
+    this.clearLayerDropIndicator();
+  }
+
+  getLayerDropPlacement(clientY) {
+    const items = Array.from(
+      this.layerList.querySelectorAll(".layer-item[data-layer-id]"),
+    );
+    if (items.length === 0) return null;
+
+    for (const item of items) {
+      const rect = item.getBoundingClientRect();
+      const index = Number(item.dataset.layerIndex);
+      if (clientY < rect.top + rect.height / 2) {
+        return { item, dropIndex: index, position: "before" };
+      }
+
+      if (clientY < rect.bottom) {
+        return { item, dropIndex: index + 1, position: "after" };
+      }
+    }
+
+    return {
+      item: items[items.length - 1],
+      dropIndex: items.length,
+      position: "after",
+    };
+  }
+
+  clearLayerDropIndicator() {
+    this.layerList
+      .querySelectorAll(".drop-before, .drop-after")
+      .forEach((item) => item.classList.remove("drop-before", "drop-after"));
+  }
+
   renderLayerList() {
     this.layerList.replaceChildren();
 
-    this.layers.forEach((layer) => {
+    this.layers.forEach((layer, index) => {
       const li = document.createElement("li");
       li.className = "layer-item";
       li.dataset.layerId = layer.id;
+      li.dataset.layerIndex = String(index);
+      li.draggable = true;
+      li.addEventListener("dragstart", (event) =>
+        this.handleLayerDragStart(event, layer.id),
+      );
+      li.addEventListener("dragend", (event) => this.handleLayerDragEnd(event));
 
       // Color picker
       const colorPicker = document.createElement("input");
@@ -1710,13 +1840,19 @@ export class GerberViewer {
 
   // File drop handlers
   handleDragOver(e) {
+    if (this.draggedLayerId) return;
+
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = "copy";
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
     this.dropZone.classList.add("drag-active");
   }
 
   handleDragLeave(e) {
+    if (this.draggedLayerId) return;
+
     e.preventDefault();
     e.stopPropagation();
     if (!this.dropZone.contains(e.relatedTarget)) {
@@ -1725,12 +1861,14 @@ export class GerberViewer {
   }
 
   handleDrop(e) {
+    if (this.draggedLayerId) return;
+
     e.preventDefault();
     e.stopPropagation();
     this.dropZone.classList.remove("drag-active");
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
+    const files = e.dataTransfer?.files;
+    if (files?.length > 0) {
       this.handleFileUpload(files);
     }
   }

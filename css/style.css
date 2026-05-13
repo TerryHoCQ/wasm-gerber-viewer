@@ -4,9 +4,8 @@
   --surface: #111822;
   --surface-2: #151e2b;
   --surface-3: #1b2636;
-  --line: #263345;
+  --line: #54667d;
   --line-strong: #35455b;
-  --control-line: #34465d;
   --text: #e7edf5;
   --muted: #91a0b5;
   --subtle: #637086;
@@ -14,7 +13,7 @@
   --accent-strong: #22d3ee;
   --danger: #f87171;
   --warning: #facc15;
-  --panel-width: 460px;
+  --panel-width: 381px;
   --toolbar-height: 58px;
   --status-height: 34px;
   --radius: 8px;
@@ -120,7 +119,12 @@ button {
 }
 
 .section-toolbar {
+  gap: 4px;
   font-size: 12px;
+}
+
+.section-toolbar .chip-button {
+  padding: 0 8px;
 }
 
 .primary-actions {
@@ -142,7 +146,7 @@ button {
 .icon-button,
 .unit-toggle,
 .panel-tab {
-  border: 1px solid var(--control-line);
+  border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
@@ -467,12 +471,12 @@ button {
 
 .panel-tab {
   min-width: 0;
-  height: 58px;
+  height: 48px;
   display: grid;
   place-items: center;
   gap: 3px;
   position: relative;
-  padding: 6px;
+  padding: 4px;
   border-radius: 7px;
   color: var(--muted);
   font-size: 11px;
@@ -568,9 +572,11 @@ button {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  padding: 6px 0;
 }
 
 .layer-item {
+  position: relative;
   display: grid;
   grid-template-columns: 28px 24px minmax(0, 1fr) 32px;
   align-items: center;
@@ -580,6 +586,38 @@ button {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--surface-2);
+}
+
+.layer-item[draggable="true"] {
+  cursor: grab;
+}
+
+.layer-item.dragging {
+  opacity: 0.45;
+}
+
+.layer-item.drop-before::before,
+.layer-item.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(13, 17, 23, 0.9),
+    0 0 12px rgba(94, 234, 212, 0.62);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.layer-item.drop-before::before {
+  top: -6px;
+}
+
+.layer-item.drop-after::after {
+  bottom: -6px;
 }
 
 .layer-item:hover {
@@ -619,6 +657,7 @@ button {
   gap: 3px;
   color: var(--text);
   cursor: pointer;
+  user-select: none;
 }
 
 .layer-label strong,
@@ -710,7 +749,7 @@ button {
   width: 100%;
   min-height: 36px;
   padding: 0 10px;
-  border: 1px solid var(--control-line);
+  border: 1px solid var(--line);
   border-radius: 7px;
   background: #0f1724;
   color: var(--text);
@@ -723,6 +762,10 @@ button {
 
 .filter-note {
   margin: 0;
+}
+
+.filter-note span {
+  display: block;
 }
 
 .notification {
@@ -843,7 +886,7 @@ button {
   }
 
   .panel-tab {
-    height: 48px;
+    height: 42px;
   }
 
   .viewport-hud {
