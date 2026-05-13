@@ -1,4 +1,4 @@
-# WASM Gerber Viewer
+# wasm-gerber-viewer
 
 WASM/WebGL2-based Gerber file viewer for PCB visualization.
 
@@ -27,8 +27,8 @@ As this is a work in progress, some Gerber syntax may not be fully supported.
 ## Quick Start
 
 ```bash
-git clone https://github.com/dsafdsaf132/wasm_gerber_viewer.git
-cd wasm_gerber_viewer
+git clone https://github.com/dsafdsaf132/wasm-gerber-viewer.git
+cd wasm-gerber-viewer
 
 # Build WASM module
 wasm-pack build wasm --target web --out-dir pkg --release
@@ -42,7 +42,7 @@ Open `http://localhost:8000` and upload Gerber files.
 ## Project Structure
 
 ```text
-wasm_gerber_viewer/
+wasm-gerber-viewer/
 ├── index.html                             # Main page
 ├── js/                                    # JavaScript files
 │   └── main.js                            # Main application (GerberViewer)

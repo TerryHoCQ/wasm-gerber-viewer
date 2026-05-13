@@ -2,6 +2,10 @@
 name = "wasm_gerber_processor"
 version = "0.1.0"
 edition = "2021"
+description = "WASM/WebGL2 Gerber file viewer for PCB visualization"
+repository = "https://github.com/dsafdsaf132/wasm-gerber-viewer"
+homepage = "https://wasm-gerber-viewer.vercel.app/"
+license = "MIT"
 
 [lints.clippy]
 too_many_arguments = "allow"
