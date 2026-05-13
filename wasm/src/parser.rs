@@ -30,7 +30,6 @@ pub struct GerberParser {
     pub polarity_layers: Vec<(Polarity, Vec<Primitive>)>,
     pub current_primitives: Vec<Primitive>, // Accumulating primitives for current polarity
     pub region_contours: Vec<Vec<[f32; 2]>>, // Contour points collected in Region mode
-    total_primitives: usize,                // Track total primitives for security limit
 }
 
 impl GerberParser {
@@ -43,7 +42,6 @@ impl GerberParser {
             polarity_layers: Vec::new(),
             current_primitives: Vec::new(),
             region_contours: Vec::new(),
-            total_primitives: 0,
         }
     }
 
@@ -88,26 +86,23 @@ impl GerberParser {
                     &self.apertures,
                     &mut self.current_primitives,
                     &mut self.region_contours,
+                    &mut self.polarity_layers,
                 );
             }
 
+            self.enforce_primitive_limit(MAX_TOTAL_PRIMITIVES)
+                .map_err(|message| JsValue::from_str(&message))?;
             i += 1;
         }
 
         // Save last accumulated primitives by polarity
         if !self.current_primitives.is_empty() {
-            self.total_primitives += self.current_primitives.len();
-            if self.total_primitives > MAX_TOTAL_PRIMITIVES {
-                return Err(JsValue::from_str(&format!(
-                    "Too many total primitives: {} (max: {})",
-                    self.total_primitives, MAX_TOTAL_PRIMITIVES
-                )));
-            }
-
             self.polarity_layers.push((
                 self.current_state.polarity,
                 take(&mut self.current_primitives),
             ));
+            self.enforce_primitive_limit(MAX_TOTAL_PRIMITIVES)
+                .map_err(|message| JsValue::from_str(&message))?;
         }
 
         // Convert each layer to individual GerberData
@@ -120,6 +115,24 @@ impl GerberParser {
         }
 
         Ok(gerber_data_layers)
+    }
+
+    fn enforce_primitive_limit(&self, max_total_primitives: usize) -> Result<(), String> {
+        let flushed_primitives = self
+            .polarity_layers
+            .iter()
+            .map(|(_, primitives)| primitives.len())
+            .sum::<usize>();
+        let total_primitives = flushed_primitives + self.current_primitives.len();
+
+        if total_primitives > max_total_primitives {
+            return Err(format!(
+                "Too many total primitives: {} (max: {})",
+                total_primitives, max_total_primitives
+            ));
+        }
+
+        Ok(())
     }
 
     /// Convert a vector of primitives to GerberData
@@ -381,7 +394,17 @@ fn parse_command(
         parse_if(&line, state);
     } else if line.starts_with("%AB") {
         // Block Aperture: %ABD##*% ... %AB*%
-        // TODO: Implement full block aperture support
+        parse_aperture_block(
+            &line,
+            i,
+            length,
+            lines,
+            state,
+            apertures,
+            macros,
+            current_primitives,
+            polarity_layers,
+        );
     } else if line.starts_with("%LM") {
         // Layer mirroring: %LMN*, %LMX*, %LMY*, %LMXY*
         parse_lm(&line, state);
@@ -396,6 +419,113 @@ fn parse_command(
     }
 }
 
+fn flush_primitives(
+    current_primitives: &mut Vec<Primitive>,
+    polarity_layers: &mut Vec<(Polarity, Vec<Primitive>)>,
+    polarity: Polarity,
+) {
+    if !current_primitives.is_empty() {
+        polarity_layers.push((polarity, take(current_primitives)));
+    }
+}
+
+fn parse_aperture_block_code(line: &str) -> Option<String> {
+    let content = line
+        .trim()
+        .trim_start_matches('%')
+        .trim_end_matches('%')
+        .trim_end_matches('*');
+
+    let aperture_id = content.strip_prefix("ABD")?;
+    if aperture_id.is_empty() || !aperture_id.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+
+    aperture_id.parse::<u32>().ok().map(|code| code.to_string())
+}
+
+fn is_aperture_block_close(line: &str) -> bool {
+    let content = line
+        .trim()
+        .trim_start_matches('%')
+        .trim_end_matches('%')
+        .trim_end_matches('*');
+
+    content == "AB"
+}
+
+fn parse_aperture_block(
+    line: &str,
+    i: &mut usize,
+    length: usize,
+    lines: &[&str],
+    state: &mut ParserState,
+    apertures: &mut HashMap<String, Aperture>,
+    macros: &mut HashMap<String, ApertureMacro>,
+    current_primitives: &mut Vec<Primitive>,
+    polarity_layers: &mut Vec<(Polarity, Vec<Primitive>)>,
+) {
+    let Some(block_code) = parse_aperture_block_code(line) else {
+        return;
+    };
+
+    flush_primitives(current_primitives, polarity_layers, state.polarity);
+
+    let mut block_primitives: Vec<Primitive> = Vec::new();
+    let mut block_layers: Vec<(Polarity, Vec<Primitive>)> = Vec::new();
+    let mut block_region_contours: Vec<Vec<[f32; 2]>> = Vec::new();
+
+    while *i + 1 < length {
+        *i += 1;
+        let block_line = lines[*i].trim();
+
+        if block_line.is_empty() || block_line.starts_with("G04") {
+            continue;
+        }
+
+        if block_line.starts_with('%') {
+            if is_aperture_block_close(block_line) {
+                break;
+            }
+
+            parse_command(
+                block_line,
+                i,
+                length,
+                lines,
+                state,
+                apertures,
+                macros,
+                &mut block_primitives,
+                &mut block_layers,
+            );
+        } else if block_line.starts_with('G')
+            || block_line.starts_with('D')
+            || block_line.starts_with('X')
+            || block_line.starts_with('Y')
+            || block_line.starts_with('I')
+            || block_line.starts_with('J')
+        {
+            parse_graphic_command(
+                block_line,
+                state,
+                apertures,
+                &mut block_primitives,
+                &mut block_region_contours,
+                &mut block_layers,
+            );
+        }
+    }
+
+    flush_primitives(&mut block_primitives, &mut block_layers, state.polarity);
+
+    state.x = 0.0;
+    state.y = 0.0;
+    state.pen_state = "up".to_string();
+
+    apertures.insert(block_code, Aperture::new_block(block_layers));
+}
+
 pub fn parse_gerber(data: &str) -> Result<Vec<GerberData>, JsValue> {
     let mut parser = GerberParser::new();
     parser.parse(data)
@@ -403,7 +533,8 @@ pub fn parse_gerber(data: &str) -> Result<Vec<GerberData>, JsValue> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_gerber;
+    use super::geometry::Primitive;
+    use super::{parse_gerber, GerberParser, Polarity};
 
     fn assert_approx_eq(actual: f32, expected: f32) {
         assert!(
@@ -426,6 +557,29 @@ mod tests {
         }
 
         (min_x, max_x, min_y, max_y)
+    }
+
+    fn test_circle() -> Primitive {
+        Primitive::Circle {
+            x: 0.0,
+            y: 0.0,
+            radius: 0.5,
+            exposure: 1.0,
+            hole_x: 0.0,
+            hole_y: 0.0,
+            hole_radius: 0.0,
+        }
+    }
+
+    #[test]
+    fn primitive_limit_counts_flushed_polarity_layers() {
+        let mut parser = GerberParser::new();
+        parser
+            .polarity_layers
+            .push((Polarity::Positive, vec![test_circle()]));
+        parser.current_primitives.push(test_circle());
+
+        assert!(parser.enforce_primitive_limit(1).is_err());
     }
 
     #[test]
@@ -679,5 +833,141 @@ M02*";
         assert_eq!(layers.len(), 1);
         assert!(layers[0].is_negative);
         assert!(layers[0].triangles.vertices.len() / 2 > 60);
+    }
+
+    #[test]
+    fn aperture_block_flashes_stored_graphics_at_operation_coordinate() {
+        let data = "\
+%FSLAX24Y24*%
+%MOMM*%
+%ABD20*%
+%ADD10C,1.0*%
+D10*
+X010000Y020000D03*
+%AB*%
+D20*
+X100000Y200000D03*
+M02*";
+
+        let layers = parse_gerber(data).expect("aperture block should parse");
+        let circles = &layers[0].circles;
+
+        assert_eq!(circles.x.len(), 1);
+        assert_approx_eq(circles.x[0], 11.0);
+        assert_approx_eq(circles.y[0], 22.0);
+        assert_approx_eq(circles.radius[0], 0.5);
+    }
+
+    #[test]
+    fn aperture_block_preserves_internal_polarity_order() {
+        let data = "\
+%FSLAX24Y24*%
+%MOMM*%
+%ABD20*%
+%LPD*%
+%ADD10C,4.0*%
+D10*
+X000000Y000000D03*
+%LPC*%
+%ADD11C,2.0*%
+D11*
+X000000Y000000D03*
+%AB*%
+%LPD*%
+D20*
+X100000Y000000D03*
+M02*";
+
+        let layers = parse_gerber(data).expect("aperture block should parse");
+
+        assert_eq!(layers.len(), 2);
+        assert!(!layers[0].is_negative);
+        assert!(layers[1].is_negative);
+        assert_eq!(layers[0].circles.x.len(), 1);
+        assert_eq!(layers[1].circles.x.len(), 1);
+        assert_approx_eq(layers[0].circles.x[0], 10.0);
+        assert_approx_eq(layers[0].circles.radius[0], 2.0);
+        assert_approx_eq(layers[1].circles.x[0], 10.0);
+        assert_approx_eq(layers[1].circles.radius[0], 1.0);
+    }
+
+    #[test]
+    fn clear_polarity_flash_toggles_aperture_block_polarity() {
+        let data = "\
+%FSLAX24Y24*%
+%MOMM*%
+%ABD20*%
+%LPD*%
+%ADD10C,4.0*%
+D10*
+X000000Y000000D03*
+%LPC*%
+%ADD11C,2.0*%
+D11*
+X000000Y000000D03*
+%AB*%
+%LPC*%
+D20*
+X100000Y000000D03*
+M02*";
+
+        let layers = parse_gerber(data).expect("aperture block should parse");
+
+        assert_eq!(layers.len(), 2);
+        assert!(layers[0].is_negative);
+        assert!(!layers[1].is_negative);
+        assert_eq!(layers[0].circles.x.len(), 1);
+        assert_eq!(layers[1].circles.x.len(), 1);
+        assert_approx_eq(layers[0].circles.radius[0], 2.0);
+        assert_approx_eq(layers[1].circles.radius[0], 1.0);
+    }
+
+    #[test]
+    fn nested_aperture_blocks_are_available_to_enclosing_block() {
+        let data = "\
+%FSLAX24Y24*%
+%MOMM*%
+%ABD20*%
+%ADD10C,1.0*%
+D10*
+X010000Y000000D03*
+%AB*%
+%ABD21*%
+D20*
+X020000Y000000D03*
+%AB*%
+D21*
+X100000Y000000D03*
+M02*";
+
+        let layers = parse_gerber(data).expect("nested aperture block should parse");
+        let circles = &layers[0].circles;
+
+        assert_eq!(circles.x.len(), 1);
+        assert_approx_eq(circles.x[0], 13.0);
+        assert_approx_eq(circles.y[0], 0.0);
+    }
+
+    #[test]
+    fn layer_scaling_transforms_aperture_block_about_origin() {
+        let data = "\
+%FSLAX24Y24*%
+%MOMM*%
+%ABD20*%
+%ADD10C,1.0*%
+D10*
+X010000Y000000D03*
+%AB*%
+%LS2.0*%
+D20*
+X100000Y000000D03*
+M02*";
+
+        let layers = parse_gerber(data).expect("scaled aperture block should parse");
+        let circles = &layers[0].circles;
+
+        assert_eq!(circles.x.len(), 1);
+        assert_approx_eq(circles.x[0], 12.0);
+        assert_approx_eq(circles.radius[0], 1.0);
     }
 }
