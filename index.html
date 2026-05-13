@@ -256,31 +256,32 @@
             </section>
 
             <section class="panel-section" data-panel="diagnostics">
-              <div
-                id="file-size-warning"
-                class="notification"
-                role="status"
-                aria-live="polite"
-              >
-                <div>
-                  <strong id="warning-title">Notice</strong>
-                  <div id="warning-message"></div>
-                </div>
-                <button
-                  type="button"
-                  class="icon-button"
-                  data-notification-close
-                  aria-label="Close"
-                >
-                  <i data-lucide="x"></i>
-                </button>
-              </div>
               <ul class="diagnostic-list" id="diagnostic-list"></ul>
             </section>
 
           </div>
         </aside>
       </main>
+
+      <div
+        id="file-size-warning"
+        class="notification"
+        role="status"
+        aria-live="polite"
+      >
+        <div>
+          <strong id="warning-title">Notice</strong>
+          <div id="warning-message"></div>
+        </div>
+        <button
+          type="button"
+          class="icon-button"
+          data-notification-close
+          aria-label="Close"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </div>
     </div>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>

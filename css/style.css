@@ -756,15 +756,28 @@ button {
 
 .notification {
   display: none;
+  position: fixed;
+  top: calc(var(--toolbar-height) + 12px);
+  right: calc(var(--panel-width) + 12px);
+  width: min(460px, calc(100vw - var(--panel-width) - 24px));
+  max-height: min(48vh, 320px);
   grid-template-columns: minmax(0, 1fr) 32px;
   gap: 8px;
   padding: 10px;
   border-color: rgba(250, 204, 21, 0.38);
   background: rgba(113, 63, 18, 0.24);
+  overflow: auto;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+  z-index: 60;
 }
 
 .notification.show {
   display: grid;
+}
+
+.app-shell:has(.side-panel.collapsed) .notification {
+  right: 12px;
+  width: min(460px, calc(100vw - 24px));
 }
 
 .notification.danger {
@@ -878,5 +891,13 @@ button {
 
   .canvas-status {
     padding: 0 8px;
+  }
+
+  .notification {
+    top: calc(var(--toolbar-height) + 8px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: min(38vh, 260px);
   }
 }
