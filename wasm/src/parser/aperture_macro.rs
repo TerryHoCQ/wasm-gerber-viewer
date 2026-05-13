@@ -122,7 +122,7 @@ pub fn evaluate_expression(expr: &str, variables: &HashMap<String, f32>) -> Resu
     let expr = expr.trim();
 
     // Replace X with * (X means multiply in Gerber format)
-    let expr = expr.replace('X', "*");
+    let expr = expr.replace(['X', 'x'], "*");
 
     // Use simple expression calculator (pass variable map)
     calculate_simple_expression(&expr, variables)
@@ -148,11 +148,13 @@ fn calculate_simple_expression(
         return Err("No tokens".to_string());
     }
 
-    // Process multiplication and division first (pass variable map)
-    let tokens = apply_multiplication_division(tokens, variables)?;
-
-    // Process addition and subtraction (pass variable map)
-    apply_addition_subtraction(tokens, variables)
+    let mut parser = ExpressionParser::new(tokens, variables);
+    let result = parser.parse_expression()?;
+    if parser.is_finished() {
+        Ok(result)
+    } else {
+        Err(format!("Unexpected token: {}", parser.peek().unwrap_or("")))
+    }
 }
 
 /// Split expression into tokens - recognize $variables as tokens, handle negative numbers
@@ -171,7 +173,9 @@ fn tokenize(expr: &str) -> Result<Vec<String>, String> {
 
         // Handle negative numbers: - or + followed by number or $variable
         // If no previous token or previous token is operator/bracket → interpret as sign
-        if (ch == '-' || ch == '+') && (tokens.is_empty() || is_operator_or_bracket(tokens.last()))
+        if (ch == '-' || ch == '+')
+            && current_token.is_empty()
+            && (tokens.is_empty() || is_operator_or_bracket(tokens.last()))
         {
             current_token.push(ch);
 
@@ -272,86 +276,111 @@ fn token_to_value(token: &str, variables: &HashMap<String, f32>) -> Result<f32, 
     }
 }
 
-/// Process * and / operations
-fn apply_multiplication_division(
+struct ExpressionParser<'a> {
     tokens: Vec<String>,
-    variables: &HashMap<String, f32>,
-) -> Result<Vec<String>, String> {
-    let mut result = Vec::new();
-    let mut i = 0;
-
-    while i < tokens.len() {
-        if i + 2 < tokens.len() && ("*" == tokens[i + 1] || "/" == tokens[i + 1]) {
-            let left = token_to_value(&tokens[i], variables)?;
-            let op = &tokens[i + 1];
-            let right = token_to_value(&tokens[i + 2], variables)?;
-
-            let value = if op == "*" {
-                left * right
-            } else {
-                if right == 0.0 {
-                    return Err("Division by zero".to_string());
-                }
-                left / right
-            };
-
-            result.push(value.to_string());
-            i += 3;
-        } else {
-            result.push(tokens[i].clone());
-            i += 1;
-        }
-    }
-
-    Ok(result)
+    pos: usize,
+    variables: &'a HashMap<String, f32>,
 }
 
-/// Process + and - operations
-fn apply_addition_subtraction(
-    tokens: Vec<String>,
-    variables: &HashMap<String, f32>,
-) -> Result<f32, String> {
-    if tokens.is_empty() {
-        return Err("No tokens to process".to_string());
-    }
-
-    let mut i;
-    let mut result;
-
-    // Handle case where first token is operator (e.g., -$1, +$2)
-    if tokens[0] == "-" || tokens[0] == "+" {
-        let sign = if tokens[0] == "-" { -1.0 } else { 1.0 };
-        if tokens.len() < 2 {
-            return Err("Operator without operand".to_string());
+impl<'a> ExpressionParser<'a> {
+    fn new(tokens: Vec<String>, variables: &'a HashMap<String, f32>) -> Self {
+        Self {
+            tokens,
+            pos: 0,
+            variables,
         }
-        result = sign * token_to_value(&tokens[1], variables)?;
-        i = 2;
-    } else {
-        result = token_to_value(&tokens[0], variables)?;
-        i = 1;
     }
 
-    // Process remaining operations
-    while i < tokens.len() {
-        if i + 1 < tokens.len() {
-            let op = &tokens[i];
-            let right = token_to_value(&tokens[i + 1], variables)?;
+    fn parse_expression(&mut self) -> Result<f32, String> {
+        let mut value = self.parse_term()?;
 
-            if op == "+" {
-                result += right;
-            } else if op == "-" {
-                result -= right;
-            } else {
-                return Err(format!("Unexpected operator: {}", op));
+        while let Some(op) = self.peek() {
+            if op != "+" && op != "-" {
+                break;
             }
+            let op = self.advance().unwrap().to_string();
+            let right = self.parse_term()?;
+            if op == "+" {
+                value += right;
+            } else {
+                value -= right;
+            }
+        }
 
-            i += 2;
-        } else {
-            break;
+        Ok(value)
+    }
+
+    fn parse_term(&mut self) -> Result<f32, String> {
+        let mut value = self.parse_factor()?;
+
+        while let Some(op) = self.peek() {
+            if op != "*" && op != "/" {
+                break;
+            }
+            let op = self.advance().unwrap().to_string();
+            let right = self.parse_factor()?;
+            if op == "*" {
+                value *= right;
+            } else if right == 0.0 {
+                return Err("Division by zero".to_string());
+            } else {
+                value /= right;
+            }
+        }
+
+        Ok(value)
+    }
+
+    fn parse_factor(&mut self) -> Result<f32, String> {
+        let Some(token) = self.advance().map(str::to_string) else {
+            return Err("Unexpected end of expression".to_string());
+        };
+
+        match token.as_str() {
+            "+" => self.parse_factor(),
+            "-" => Ok(-self.parse_factor()?),
+            "(" => {
+                let value = self.parse_expression()?;
+                match self.advance() {
+                    Some(")") => Ok(value),
+                    _ => Err("Missing closing parenthesis".to_string()),
+                }
+            }
+            ")" => Err("Unexpected closing parenthesis".to_string()),
+            _ => token_to_value(&token, self.variables),
         }
     }
 
-    Ok(result)
+    fn peek(&self) -> Option<&str> {
+        self.tokens.get(self.pos).map(String::as_str)
+    }
+
+    fn advance(&mut self) -> Option<&str> {
+        let token = self.tokens.get(self.pos)?;
+        self.pos += 1;
+        Some(token)
+    }
+
+    fn is_finished(&self) -> bool {
+        self.pos >= self.tokens.len()
+    }
+}
+
+fn degrees_to_radians(degrees: f32) -> f32 {
+    degrees * std::f32::consts::PI / 180.0
+}
+
+fn rotate_xy(x: &mut f32, y: &mut f32, rotation: f32) {
+    if rotation != 0.0 {
+        let mut point = [*x, *y];
+        rotate_point(&mut point, rotation, 0.0, 0.0);
+        *x = point[0];
+        *y = point[1];
+    }
+}
+
+fn same_point(a: [f32; 2], b: [f32; 2]) -> bool {
+    (a[0] - b[0]).abs() < 0.000001 && (a[1] - b[1]).abs() < 0.000001
 }
 
 /// Parse primitive statement: 1,1,$7,$5-$3,$6-$3,$4*
@@ -382,8 +411,14 @@ pub fn parse_primitive_statement(
             }
             let exposure: f32 = evaluate_expression(parts[1], variables).ok()?;
             let diameter: f32 = evaluate_expression(parts[2], variables).ok()?;
-            let center_x: f32 = evaluate_expression(parts[3], variables).ok()?;
-            let center_y: f32 = evaluate_expression(parts[4], variables).ok()?;
+            let mut center_x: f32 = evaluate_expression(parts[3], variables).ok()?;
+            let mut center_y: f32 = evaluate_expression(parts[4], variables).ok()?;
+            let rotation: f32 = if parts.len() > 5 {
+                degrees_to_radians(evaluate_expression(parts[5], variables).ok()?)
+            } else {
+                0.0
+            };
+            rotate_xy(&mut center_x, &mut center_y, rotation);
 
             primitives.push(Primitive::Circle {
                 x: center_x,
@@ -404,16 +439,23 @@ pub fn parse_primitive_statement(
             }
             let exposure: f32 = evaluate_expression(parts[1], variables).ok()?;
             let num_vertices: u32 = evaluate_expression(parts[2], variables).ok()? as u32;
-            let rotation: f32 = if parts.len() > 3 + (num_vertices as usize) * 2 {
-                evaluate_expression(parts[3 + (num_vertices as usize) * 2], variables).ok()?
-                    * (std::f32::consts::PI / 180.0) // degrees to radians
+            let closed_point_count = num_vertices as usize + 1;
+            let closed_rotation_idx = 3 + closed_point_count * 2;
+            let open_rotation_idx = 3 + (num_vertices as usize) * 2;
+            let (point_count, rotation_idx) = if parts.len() > closed_rotation_idx {
+                (closed_point_count, closed_rotation_idx)
+            } else {
+                (num_vertices as usize, open_rotation_idx)
+            };
+            let rotation: f32 = if parts.len() > rotation_idx {
+                degrees_to_radians(evaluate_expression(parts[rotation_idx], variables).ok()?)
             } else {
                 0.0
             };
 
             // Collect vertices
             let mut vertices = Vec::new();
-            for i in 0..num_vertices as usize {
+            for i in 0..point_count {
                 let x_idx = 3 + i * 2;
                 let y_idx = 3 + i * 2 + 1;
                 if x_idx >= parts.len() || y_idx >= parts.len() {
@@ -422,6 +464,9 @@ pub fn parse_primitive_statement(
                 let x = evaluate_expression(parts[x_idx], variables).ok()?;
                 let y = evaluate_expression(parts[y_idx], variables).ok()?;
                 vertices.push([x, y]);
+            }
+            if vertices.len() > 1 && same_point(vertices[0], *vertices.last().unwrap()) {
+                vertices.pop();
             }
 
             // Execute triangulation
@@ -459,8 +504,7 @@ pub fn parse_primitive_statement(
             let center_y: f32 = evaluate_expression(parts[4], variables).ok()?;
             let diameter: f32 = evaluate_expression(parts[5], variables).ok()?;
             let rotation: f32 = if parts.len() > 6 {
-                evaluate_expression(parts[6], variables).ok()? * (std::f32::consts::PI / 180.0)
-            // degrees to radians
+                degrees_to_radians(evaluate_expression(parts[6], variables).ok()?)
             } else {
                 0.0
             };
@@ -514,14 +558,17 @@ pub fn parse_primitive_statement(
             let inner_diameter: f32 = evaluate_expression(parts[4], variables).ok()?;
             let gap_thickness: f32 = evaluate_expression(parts[5], variables).ok()?;
             let rotation: f32 = if parts.len() > 6 {
-                evaluate_expression(parts[6], variables).ok()? * (std::f32::consts::PI / 180.0)
+                degrees_to_radians(evaluate_expression(parts[6], variables).ok()?)
             } else {
                 0.0
             };
+            let mut rotated_center_x = center_x;
+            let mut rotated_center_y = center_y;
+            rotate_xy(&mut rotated_center_x, &mut rotated_center_y, rotation);
 
             primitives.push(Primitive::Thermal {
-                x: center_x,
-                y: center_y,
+                x: rotated_center_x,
+                y: rotated_center_y,
                 outer_diameter,
                 inner_diameter,
                 gap_thickness,
@@ -543,8 +590,7 @@ pub fn parse_primitive_statement(
             let end_x: f32 = evaluate_expression(parts[5], variables).ok()?;
             let end_y: f32 = evaluate_expression(parts[6], variables).ok()?;
             let rotation: f32 = if parts.len() > 7 {
-                evaluate_expression(parts[7], variables).ok()? * (std::f32::consts::PI / 180.0)
-            // degrees to radians
+                degrees_to_radians(evaluate_expression(parts[7], variables).ok()?)
             } else {
                 0.0
             };
@@ -576,7 +622,7 @@ pub fn parse_primitive_statement(
             let center_x: f32 = evaluate_expression(parts[4], variables).ok()?;
             let center_y: f32 = evaluate_expression(parts[5], variables).ok()?;
             let rotation: f32 = if parts.len() > 6 {
-                evaluate_expression(parts[6], variables).ok()?
+                degrees_to_radians(evaluate_expression(parts[6], variables).ok()?)
             } else {
                 0.0
             };
@@ -610,12 +656,12 @@ pub fn parse_primitive_statement(
             if rotation != 0.0 {
                 if let Primitive::Triangle { vertices, .. } = &mut tri1 {
                     for vertex in vertices.iter_mut() {
-                        rotate_point(vertex, rotation, center_x, center_y);
+                        rotate_point(vertex, rotation, 0.0, 0.0);
                     }
                 }
                 if let Primitive::Triangle { vertices, .. } = &mut tri2 {
                     for vertex in vertices.iter_mut() {
-                        rotate_point(vertex, rotation, center_x, center_y);
+                        rotate_point(vertex, rotation, 0.0, 0.0);
                     }
                 }
             }
@@ -629,5 +675,37 @@ pub fn parse_primitive_statement(
             // Unknown code
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{evaluate_expression, parse_macro};
+    use std::collections::HashMap;
+
+    #[test]
+    fn expression_supports_lowercase_multiply_and_parentheses() {
+        let variables = HashMap::from([
+            ("$1".to_string(), 2.0),
+            ("$3".to_string(), 0.2),
+            ("$4".to_string(), 0.1),
+        ]);
+
+        let value = evaluate_expression("(-$1+3x$3)/2+$4", &variables).unwrap();
+
+        assert!((value + 0.6).abs() < 0.0001);
+    }
+
+    #[test]
+    fn multiline_outline_macro_instantiates_geometry() {
+        let mut macros = HashMap::new();
+        parse_macro(
+            "%AMBOXS2*4,1,4,-$1/2+$4,$2/2-$3+$5,(-$1+3x$3)/2+$4,$2/2+$5,($1-3x$3)/2+$4,$2/2+$5,$1/2+$4,$2/2-$3+$5,-$1/2+$4,$2/2-$3+$5,$6*%",
+            &mut macros,
+        );
+        let macro_def = macros.get("BOXS2").unwrap();
+        let primitives = macro_def.instantiate(&[2.0, 1.0, 0.2, 0.1, -0.3, 90.0]);
+
+        assert!(!primitives.is_empty());
     }
 }

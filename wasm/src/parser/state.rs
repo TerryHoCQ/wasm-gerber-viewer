@@ -213,7 +213,7 @@ pub fn parse_sr(line: &str, state: &mut ParserState) {
     if let Some(y_pos) = spec_content.find('Y') {
         let y_part = &spec_content[y_pos + 1..];
         let y_end = y_part
-            .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '.')
+            .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '+' && c != '.')
             .unwrap_or(y_part.len());
         if let Ok(y_count) = y_part[..y_end].parse::<u32>() {
             state.sr_y = y_count;
@@ -224,10 +224,10 @@ pub fn parse_sr(line: &str, state: &mut ParserState) {
     if let Some(i_pos) = spec_content.find('I') {
         let i_part = &spec_content[i_pos + 1..];
         let i_end = i_part
-            .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '.')
+            .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '+' && c != '.')
             .unwrap_or(i_part.len());
         if let Ok(i_step) = i_part[..i_end].parse::<f32>() {
-            state.sr_i = i_step;
+            state.sr_i = i_step * state.unit_multiplier;
         }
     }
 
@@ -235,10 +235,10 @@ pub fn parse_sr(line: &str, state: &mut ParserState) {
     if let Some(j_pos) = spec_content.find('J') {
         let j_part = &spec_content[j_pos + 1..];
         let j_end = j_part
-            .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '.')
+            .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '+' && c != '.')
             .unwrap_or(j_part.len());
         if let Ok(j_step) = j_part[..j_end].parse::<f32>() {
-            state.sr_j = j_step;
+            state.sr_j = j_step * state.unit_multiplier;
         }
     }
 }
@@ -249,8 +249,7 @@ pub fn parse_lp(
     line: &str,
     state: &mut ParserState,
     current_primitives: &mut Vec<Primitive>,
-    positive_layers: &mut Vec<Vec<Primitive>>,
-    negative_layers: &mut Vec<Vec<Primitive>>,
+    polarity_layers: &mut Vec<(Polarity, Vec<Primitive>)>,
 ) {
     // Extract D or C from %LPD* or %LPC* format
     let spec_str = line
@@ -272,12 +271,7 @@ pub fn parse_lp(
 
     // Check if polarity has changed
     if state.polarity != new_polarity && !current_primitives.is_empty() {
-        // Save to layer according to current polarity
-        if state.polarity == Polarity::Positive {
-            positive_layers.push(take(current_primitives));
-        } else {
-            negative_layers.push(take(current_primitives));
-        }
+        polarity_layers.push((state.polarity, take(current_primitives)));
     }
 
     // Set new polarity
@@ -333,7 +327,7 @@ pub fn parse_mo(line: &str, state: &mut ParserState) {
 
 /// Parse Layer Scaling - %LS0.8*
 /// Format: %LS[scale_factor]*%
-/// Example: %LS0.5* scales all subsequent coordinates by 0.5
+/// Example: %LS0.5* scales subsequent aperture shapes by 0.5
 pub fn parse_ls(line: &str, state: &mut ParserState) {
     // Extract scale value from %LS0.8*% format
     let spec_str = line
@@ -348,12 +342,9 @@ pub fn parse_ls(line: &str, state: &mut ParserState) {
     let scale_str = &spec_str[2..]; // "0.8" part
 
     if let Ok(new_scale) = scale_str.parse::<f32>() {
-        if state.layer_scale != 0.0 && new_scale != state.layer_scale {
-            let ratio = new_scale / state.layer_scale;
-            state.x *= ratio;
-            state.y *= ratio;
+        if new_scale > 0.0 {
+            state.layer_scale = new_scale;
         }
-        state.layer_scale = new_scale;
     }
 }
 

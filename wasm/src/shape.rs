@@ -166,6 +166,7 @@ pub struct GerberData {
     pub(crate) arcs: Arcs,
     pub(crate) thermals: Thermals,
     pub(crate) boundary: Boundary,
+    pub(crate) is_negative: bool,
 }
 
 impl GerberData {
@@ -175,6 +176,7 @@ impl GerberData {
         arcs: Arcs,
         thermals: Thermals,
         boundary: Boundary,
+        is_negative: bool,
     ) -> GerberData {
         GerberData {
             triangles,
@@ -182,6 +184,7 @@ impl GerberData {
             arcs,
             thermals,
             boundary,
+            is_negative,
         }
     }
 

@@ -1,5 +1,5 @@
 use super::aperture_macro::ApertureMacro;
-use super::geometry::Primitive;
+use super::geometry::{scale_primitive, Primitive};
 use std::collections::HashMap;
 
 /// Aperture definition (Circle, Rectangle, Obround, Polygon, or Macro reference)
@@ -27,7 +27,6 @@ pub fn parse_aperture(
     apertures: &mut HashMap<String, Aperture>,
     macros: &HashMap<String, ApertureMacro>,
     unit_multiplier: f32,
-    layer_scale: f32,
 ) {
     // Format: %ADD{code}{shape},{params}*%
     // Remove %ADD and %
@@ -49,7 +48,10 @@ pub fn parse_aperture(
         return;
     }
 
-    let code = content[..code_end].to_string();
+    let code = match content[..code_end].parse::<u32>() {
+        Ok(code) => code.to_string(),
+        Err(_) => return,
+    };
     let rest = &content[code_end..];
 
     // Split shape and parameters by comma or *
@@ -68,11 +70,9 @@ pub fn parse_aperture(
             if shape_and_params.len() > 1 {
                 let params: Vec<&str> = shape_and_params[1].split('X').collect();
                 if let Ok(diameter) = params[0].trim().parse::<f32>() {
-                    let diameter_mm = diameter * unit_multiplier * layer_scale;
+                    let diameter_mm = diameter * unit_multiplier;
                     let hole_diameter_mm = if params.len() > 1 {
-                        params[1].trim().parse::<f32>().unwrap_or(0.0)
-                            * unit_multiplier
-                            * layer_scale
+                        params[1].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier
                     } else {
                         0.0
                     };
@@ -99,12 +99,10 @@ pub fn parse_aperture(
                         params[0].trim().parse::<f32>(),
                         params[1].trim().parse::<f32>(),
                     ) {
-                        let width_mm = width * unit_multiplier * layer_scale;
-                        let height_mm = height * unit_multiplier * layer_scale;
+                        let width_mm = width * unit_multiplier;
+                        let height_mm = height * unit_multiplier;
                         let hole_diameter_mm = if params.len() > 2 {
-                            params[2].trim().parse::<f32>().unwrap_or(0.0)
-                                * unit_multiplier
-                                * layer_scale
+                            params[2].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier
                         } else {
                             0.0
                         };
@@ -146,12 +144,10 @@ pub fn parse_aperture(
                         params[0].trim().parse::<f32>(),
                         params[1].trim().parse::<f32>(),
                     ) {
-                        let width_mm = width * unit_multiplier * layer_scale;
-                        let height_mm = height * unit_multiplier * layer_scale;
+                        let width_mm = width * unit_multiplier;
+                        let height_mm = height * unit_multiplier;
                         let hole_diameter_mm = if params.len() > 2 {
-                            params[2].trim().parse::<f32>().unwrap_or(0.0)
-                                * unit_multiplier
-                                * layer_scale
+                            params[2].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier
                         } else {
                             0.0
                         };
@@ -273,7 +269,7 @@ pub fn parse_aperture(
                         params[0].trim().parse::<f32>(),
                         params[1].trim().parse::<f32>(),
                     ) {
-                        let diameter_mm = diameter * unit_multiplier * layer_scale;
+                        let diameter_mm = diameter * unit_multiplier;
 
                         // Parse rotation (degrees, defaults to 0)
                         // 3 parameters: rotation (NOT hole!)
@@ -287,9 +283,7 @@ pub fn parse_aperture(
 
                         // Parse hole (only if 4+ parameters)
                         let hole_diameter_mm = if params.len() > 3 {
-                            params[3].trim().parse::<f32>().unwrap_or(0.0)
-                                * unit_multiplier
-                                * layer_scale
+                            params[3].trim().parse::<f32>().unwrap_or(0.0) * unit_multiplier
                         } else {
                             0.0
                         };
@@ -338,18 +332,19 @@ pub fn parse_aperture(
                     if param_str.contains('X') {
                         for sub_param in param_str.split('X') {
                             if let Ok(param) = sub_param.trim().parse::<f32>() {
-                                // Convert dimension parameters (aperture macro params are dimensions)
-                                params.push(param * unit_multiplier * layer_scale);
+                                params.push(param);
                             }
                         }
                     } else if let Ok(param) = param_str.parse::<f32>() {
-                        // Convert dimension parameters (aperture macro params are dimensions)
-                        params.push(param * unit_multiplier * layer_scale);
+                        params.push(param);
                     }
                 }
 
                 // Call Macro instantiate
                 aperture.primitives = macro_def.instantiate(&params);
+                for primitive in &mut aperture.primitives {
+                    scale_primitive(primitive, unit_multiplier);
+                }
                 aperture.radius = 0.0; // For macros, the radius depends on the parameters
             }
         }

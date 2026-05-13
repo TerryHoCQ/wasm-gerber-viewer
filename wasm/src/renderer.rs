@@ -931,8 +931,7 @@ impl Renderer {
 
         // Render each polarity sublayer with appropriate blending
         for sublayer_idx in 0..sublayer_count {
-            // Check polarity: even index = positive, odd index = negative
-            let is_negative = (sublayer_idx % 2) == 1;
+            let is_negative = self.get_layer(layer_id)?.gerber_data[sublayer_idx].is_negative;
 
             // Set polarity blending mode
             self.gl.enable(BLEND);
