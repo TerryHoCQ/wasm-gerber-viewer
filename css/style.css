@@ -6,6 +6,7 @@
   --surface-3: #1b2636;
   --line: #263345;
   --line-strong: #35455b;
+  --control-line: #34465d;
   --text: #e7edf5;
   --muted: #91a0b5;
   --subtle: #637086;
@@ -13,7 +14,7 @@
   --accent-strong: #22d3ee;
   --danger: #f87171;
   --warning: #facc15;
-  --panel-width: 360px;
+  --panel-width: 460px;
   --toolbar-height: 58px;
   --status-height: 34px;
   --radius: 8px;
@@ -118,6 +119,20 @@ button {
   justify-content: flex-end;
 }
 
+.section-toolbar {
+  font-size: 12px;
+}
+
+.primary-actions {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.primary-actions::-webkit-scrollbar {
+  display: none;
+}
+
 #file-input {
   display: none;
 }
@@ -127,7 +142,7 @@ button {
 .icon-button,
 .unit-toggle,
 .panel-tab {
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
@@ -158,6 +173,7 @@ button {
 
 .chip-button {
   min-height: 32px;
+  min-width: 0;
   flex: 1;
   padding: 0 10px;
   color: var(--muted);
@@ -407,6 +423,7 @@ button {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  container-type: inline-size;
   border-left: 1px solid var(--line);
   background: var(--surface);
 }
@@ -442,7 +459,7 @@ button {
 
 .panel-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 10px;
   border-bottom: 1px solid var(--line);
@@ -509,6 +526,18 @@ button {
   display: grid;
   gap: 12px;
   flex: 0 0 auto;
+}
+
+@container (max-width: 380px) {
+  .panel-tab,
+  .layer-panel-controls .chip-button {
+    padding: 0;
+  }
+
+  .panel-tab span:not(.tab-badge),
+  .layer-panel-controls .chip-button span {
+    display: none;
+  }
 }
 
 .alpha-control {
@@ -622,6 +651,7 @@ button {
 
 .info-grid > div,
 .file-note,
+.filter-form,
 .notification,
 .file-list li,
 .diagnostic-list li {
@@ -631,7 +661,8 @@ button {
 }
 
 .info-grid > div,
-.file-note {
+.file-note,
+.filter-form {
   padding: 12px;
 }
 
@@ -656,6 +687,42 @@ button {
   display: grid;
   gap: 3px;
   padding: 10px;
+}
+
+.filter-form {
+  display: grid;
+  gap: 12px;
+}
+
+.filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-field span,
+.filter-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.filter-field input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 7px;
+  background: #0f1724;
+  color: var(--text);
+  outline: none;
+}
+
+.filter-field input:focus {
+  border-color: rgba(94, 234, 212, 0.62);
+}
+
+.filter-note {
+  margin: 0;
 }
 
 .notification {
@@ -771,7 +838,7 @@ button {
   }
 
   .panel-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     padding: 8px;
   }
 

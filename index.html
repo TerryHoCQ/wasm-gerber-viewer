@@ -45,6 +45,15 @@
           <button
             type="button"
             class="icon-button"
+            id="screenshot-btn"
+            aria-label="Export screenshot"
+            title="Export screenshot"
+          >
+            <i data-lucide="camera"></i>
+          </button>
+          <button
+            type="button"
+            class="icon-button"
             id="ruler-toggle-btn"
             aria-label="Enable ruler"
             aria-pressed="false"
@@ -148,6 +157,10 @@
               <i data-lucide="files"></i>
               <span>Files</span>
             </button>
+            <button type="button" class="panel-tab" data-panel-tab="filter">
+              <i data-lucide="list-filter"></i>
+              <span>Filter</span>
+            </button>
             <button type="button" class="panel-tab" data-panel-tab="diagnostics">
               <i data-lucide="circle-alert"></i>
               <span>Diagnostics</span>
@@ -162,6 +175,14 @@
                   <button class="chip-button" id="select-all-btn" type="button">
                     <i data-lucide="check-check"></i>
                     <span>All</span>
+                  </button>
+                  <button class="chip-button" id="select-front-btn" type="button">
+                    <i data-lucide="panel-top"></i>
+                    <span>Front</span>
+                  </button>
+                  <button class="chip-button" id="select-back-btn" type="button">
+                    <i data-lucide="panel-bottom"></i>
+                    <span>Back</span>
                   </button>
                   <button class="chip-button" id="unselect-all-btn" type="button">
                     <i data-lucide="eye-off"></i>
@@ -201,6 +222,32 @@
                 <strong>300 MB</strong>
               </div>
               <ol class="file-list" id="file-list"></ol>
+            </section>
+
+            <section class="panel-section" data-panel="filter">
+              <div class="filter-form">
+                <label class="filter-field" for="front-filter-input">
+                  <span>Front</span>
+                  <input
+                    type="text"
+                    id="front-filter-input"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="filter-field" for="back-filter-input">
+                  <span>Back</span>
+                  <input
+                    type="text"
+                    id="back-filter-input"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <p class="filter-note">
+                  Use comma or space separated text. Matching is case-insensitive.
+                </p>
+              </div>
             </section>
 
             <section class="panel-section" data-panel="diagnostics">

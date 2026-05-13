@@ -11,11 +11,14 @@ export class GerberViewer {
     this.emptyUploadBtn = document.getElementById("empty-upload-btn");
     this.fitViewBtn = document.getElementById("fit-view-btn");
     this.canvasThemeToggle = document.getElementById("canvas-theme-toggle");
+    this.screenshotBtn = document.getElementById("screenshot-btn");
     this.rulerToggleBtn = document.getElementById("ruler-toggle-btn");
     this.rulerClearBtn = document.getElementById("ruler-clear-btn");
     this.measurementUnitToggle = document.getElementById("measurement-unit-toggle");
     this.fullscreenBtn = document.getElementById("fullscreen-btn");
     this.selectAllBtn = document.getElementById("select-all-btn");
+    this.selectFrontBtn = document.getElementById("select-front-btn");
+    this.selectBackBtn = document.getElementById("select-back-btn");
     this.unselectAllBtn = document.getElementById("unselect-all-btn");
     this.clearAllBtn = document.getElementById("clear-all-btn");
     this.alphaSlider = document.getElementById("alpha-slider");
@@ -40,6 +43,8 @@ export class GerberViewer {
     this.loadedFileCount = document.getElementById("loaded-file-count");
     this.visibleFileCount = document.getElementById("visible-file-count");
     this.diagnosticsCount = document.getElementById("diagnostics-count");
+    this.frontFilterInput = document.getElementById("front-filter-input");
+    this.backFilterInput = document.getElementById("back-filter-input");
     this.panelTabs = Array.from(document.querySelectorAll("[data-panel-tab]"));
     this.panelSections = Array.from(document.querySelectorAll("[data-panel]"));
 
@@ -81,7 +86,7 @@ export class GerberViewer {
 
     // Drawer resize state
     this.isResizingDrawer = false;
-    this.drawerCurrentWidth = 300; // Default width
+    this.drawerCurrentWidth = 460;
     this.drawerMinWidth = 200;
     this.drawerMaxWidth = 600;
 
@@ -107,6 +112,8 @@ export class GerberViewer {
     this.rulerHoverPoint = null;
     this.measurements = [];
     this.measurementUnit = "mm";
+    this.layerFilterStorageKey = "wasm-gerber-viewer.layerFilters";
+    this.layerFilters = this.loadLayerFilters();
   }
 
   async init() {
@@ -116,7 +123,7 @@ export class GerberViewer {
     this.wasmModule.init_panic_hook();
 
     // Create WebGL2 context
-    this.gl = this.canvas.getContext("webgl2");
+    this.gl = this.canvas.getContext("webgl2", { preserveDrawingBuffer: true });
     if (!this.gl) {
       throw new Error("WebGL2 not supported");
     }
@@ -133,6 +140,7 @@ export class GerberViewer {
 
     // Initial render
     this.refreshIcons();
+    this.syncFilterInputs();
     this.updateUiState();
     this.updateRulerControls();
     this.updateMeasurementUnitControl();
@@ -181,6 +189,10 @@ export class GerberViewer {
       this.toggleCanvasTheme();
     });
 
+    this.screenshotBtn.addEventListener("click", () => {
+      this.exportScreenshot();
+    });
+
     this.rulerToggleBtn.addEventListener("click", () => {
       this.toggleRuler();
     });
@@ -207,6 +219,14 @@ export class GerberViewer {
       this.selectAllLayerCheckboxes();
     });
 
+    this.selectFrontBtn.addEventListener("click", () => {
+      this.selectLayersByFilter("front");
+    });
+
+    this.selectBackBtn.addEventListener("click", () => {
+      this.selectLayersByFilter("back");
+    });
+
     this.unselectAllBtn.addEventListener("click", () => {
       this.unselectAllLayerCheckboxes();
     });
@@ -220,6 +240,14 @@ export class GerberViewer {
       const alpha = parseInt(e.target.value) / 100;
       this.alphaValue.textContent = `${e.target.value}%`;
       this.updateGlobalAlpha(alpha);
+    });
+
+    this.frontFilterInput.addEventListener("input", () => {
+      this.updateLayerFilter("front", this.frontFilterInput.value);
+    });
+
+    this.backFilterInput.addEventListener("input", () => {
+      this.updateLayerFilter("back", this.backFilterInput.value);
     });
 
     this.notificationCloseBtn.addEventListener("click", () => {
@@ -293,6 +321,56 @@ export class GerberViewer {
     if (window.lucide) {
       window.lucide.createIcons();
     }
+  }
+
+  loadLayerFilters() {
+    const defaults = {
+      front: "front top gtl gto gts gtp",
+      back: "back bottom gbl gbo gbs gbp",
+    };
+
+    try {
+      const stored = JSON.parse(
+        window.localStorage.getItem(this.layerFilterStorageKey) || "{}",
+      );
+      return {
+        front: typeof stored.front === "string" ? stored.front : defaults.front,
+        back: typeof stored.back === "string" ? stored.back : defaults.back,
+      };
+    } catch {
+      return defaults;
+    }
+  }
+
+  saveLayerFilters() {
+    window.localStorage.setItem(
+      this.layerFilterStorageKey,
+      JSON.stringify(this.layerFilters),
+    );
+  }
+
+  syncFilterInputs() {
+    this.frontFilterInput.value = this.layerFilters.front;
+    this.backFilterInput.value = this.layerFilters.back;
+  }
+
+  updateLayerFilter(kind, value) {
+    this.layerFilters[kind] = value;
+    this.saveLayerFilters();
+  }
+
+  getFilterTokens(kind) {
+    return this.layerFilters[kind]
+      .split(/[\s,;|]+/)
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  layerMatchesFilter(layer, kind) {
+    const tokens = this.getFilterTokens(kind);
+    if (tokens.length === 0) return false;
+    const layerName = layer.name.toLowerCase();
+    return tokens.some((token) => layerName.includes(token));
   }
 
   updateUiState() {
@@ -454,6 +532,120 @@ export class GerberViewer {
     icon.setAttribute("data-lucide", this.isCanvasLight ? "moon" : "sun");
     this.canvasThemeToggle.appendChild(icon);
     this.refreshIcons();
+  }
+
+  async exportScreenshot() {
+    this.render();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      this.showError("Cannot export screenshot because the canvas has no size.");
+      return;
+    }
+
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    const output = document.createElement("canvas");
+    output.width = Math.max(1, Math.round(rect.width * scale));
+    output.height = Math.max(1, Math.round(rect.height * scale));
+
+    const context = output.getContext("2d");
+    context.scale(scale, scale);
+    context.fillStyle = this.isCanvasLight ? "#f8fafc" : "#020617";
+    context.fillRect(0, 0, rect.width, rect.height);
+    context.drawImage(this.canvas, 0, 0, rect.width, rect.height);
+    this.drawMeasurementsOnContext(context);
+
+    output.toBlob((blob) => {
+      if (!blob) {
+        this.showError("Failed to export screenshot.");
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `gerber-viewer-${this.getTimestampForFileName()}.png`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }
+
+  drawMeasurementsOnContext(context) {
+    for (const measurement of this.measurements) {
+      this.drawMeasurementOnContext(context, measurement.start, measurement.end, false);
+    }
+
+    if (this.rulerStartPoint && this.rulerHoverPoint) {
+      this.drawMeasurementOnContext(
+        context,
+        this.rulerStartPoint,
+        this.rulerHoverPoint,
+        true,
+      );
+    } else if (this.rulerStartPoint) {
+      this.drawMeasurementPointOnContext(context, this.rulerStartPoint);
+    }
+  }
+
+  drawMeasurementOnContext(context, start, end, isPreview) {
+    const startPoint = this.worldToCanvasPoint(start);
+    const endPoint = this.worldToCanvasPoint(end);
+    if (!startPoint || !endPoint) return;
+
+    context.save();
+    context.globalAlpha = isPreview ? 0.7 : 1;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#000";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(startPoint.x, startPoint.y);
+    context.lineTo(endPoint.x, endPoint.y);
+    context.stroke();
+    context.strokeStyle = "#fff";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(startPoint.x, startPoint.y);
+    context.lineTo(endPoint.x, endPoint.y);
+    context.stroke();
+    context.restore();
+
+    this.drawMeasurementPointOnContext(context, start);
+    this.drawMeasurementPointOnContext(context, end);
+
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const x = (startPoint.x + endPoint.x) / 2;
+    const y = (startPoint.y + endPoint.y) / 2 - 8;
+    context.save();
+    context.font = "700 12px Inter, ui-sans-serif, system-ui, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.lineWidth = 2;
+    context.strokeStyle = "#000";
+    context.fillStyle = "#fff";
+    context.strokeText(this.formatMeasurementLength(distance), x, y);
+    context.fillText(this.formatMeasurementLength(distance), x, y);
+    context.restore();
+  }
+
+  drawMeasurementPointOnContext(context, point) {
+    const canvasPoint = this.worldToCanvasPoint(point);
+    if (!canvasPoint) return;
+
+    context.save();
+    context.fillStyle = "#fff";
+    context.strokeStyle = "#000";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.arc(canvasPoint.x, canvasPoint.y, 4, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
+
+  getTimestampForFileName() {
+    return new Date().toISOString().replace(/[:.]/g, "-");
   }
 
   toggleRuler() {
@@ -1287,6 +1479,15 @@ export class GerberViewer {
     this.updateUiState();
   }
 
+  selectLayersByFilter(kind) {
+    this.layers.forEach((layer) => {
+      layer.visible = this.layerMatchesFilter(layer, kind);
+    });
+    this.renderLayerList();
+    this.render();
+    this.updateUiState();
+  }
+
   unselectAllLayerCheckboxes() {
     this.layers.forEach((layer) => {
       layer.visible = false;
@@ -1384,7 +1585,7 @@ export class GerberViewer {
 
     const width = layer.bounds.maxX - layer.bounds.minX;
     const height = layer.bounds.maxY - layer.bounds.minY;
-    return `${layer.visible ? "visible" : "hidden"} · ${width.toFixed(3)} x ${height.toFixed(3)} mm`;
+    return `${width.toFixed(3)} x ${height.toFixed(3)} mm`;
   }
 
   rgbToHex(rgb) {
