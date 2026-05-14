@@ -61,7 +61,9 @@ impl GerberParser {
                 continue;
             }
 
-            if line_ref.starts_with('%') {
+            if line_ref.starts_with("M02") {
+                break;
+            } else if line_ref.starts_with('%') {
                 parse_command(
                     line_ref,
                     &mut i,
@@ -490,6 +492,7 @@ fn parse_aperture_block(
                 break;
             }
 
+            let nested_block_state = parse_aperture_block_code(block_line).map(|_| state.clone());
             parse_command(
                 block_line,
                 i,
@@ -501,6 +504,9 @@ fn parse_aperture_block(
                 &mut block_primitives,
                 &mut block_layers,
             );
+            if let Some(enclosing_state) = nested_block_state {
+                *state = enclosing_state;
+            }
         } else if block_line.starts_with('G')
             || block_line.starts_with('D')
             || block_line.starts_with('X')
