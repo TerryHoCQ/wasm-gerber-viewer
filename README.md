@@ -47,15 +47,6 @@ python3 -m http.server 8000
 
 Open `http://localhost:8000` and upload Gerber files.
 
-When Rust or WASM files change, rebuild the package before refreshing the page:
-
-```bash
-wasm-pack build wasm --target web --out-dir pkg --release
-```
-
-The CI/Vercel build uses `scripts/vercel-build.sh`, which reuses `wasm/pkg`
-when the WASM sources have not changed.
-
 ## Project Structure
 
 ```text
