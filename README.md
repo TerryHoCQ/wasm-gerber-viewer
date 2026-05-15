@@ -18,6 +18,9 @@ Website:
 - RS-274X Gerber rendering support
 - Touch support for mobile devices
 - Multi-layer rendering with per-layer color and visibility control
+- Horizontal/vertical flip controls
+- Ruler measurements with mm/inch unit switching
+- Screenshot export with background and resolution options, including ruler overlays
 - Drag-and-drop upload and per-file size validation (300MB limit)
 
 ## Requirements
