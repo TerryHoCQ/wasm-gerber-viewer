@@ -32,14 +32,38 @@ export function getInitialSourceRepeatOffset(
   };
 }
 
-export async function fetchRemoteFile(url) {
+export async function fetchRemoteFile(url, { onProgress = () => {} } = {}) {
   const response = await fetch(url.href);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} while loading ${url.href}`);
   }
 
+  const contentLength = Number(response.headers.get("content-length"));
+  let blob;
+  if (!response.body || !Number.isFinite(contentLength) || contentLength <= 0) {
+    blob = await response.blob();
+    onProgress(1);
+  } else {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let receivedLength = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunks.push(value);
+      receivedLength += value.length;
+      onProgress(Math.min(receivedLength / contentLength, 1));
+    }
+
+    blob = new Blob(chunks, {
+      type: response.headers.get("content-type") || "",
+    });
+  }
+
   const fileName = getBaseFileName(decodeURIComponent(url.pathname));
-  return new File([await response.blob()], fileName, {
+  return new File([blob], fileName, {
     type: response.headers.get("content-type") || "",
   });
 }
@@ -47,7 +71,12 @@ export async function fetchRemoteFile(url) {
 export async function collectLayerSources(files, callbacks = {}) {
   const layerSources = [];
 
-  for (const file of files) {
+  for (let index = 0; index < files.length; index++) {
+    const file = typeof files.item === "function" ? files.item(index) : files[index];
+    if (!file) continue;
+
+    callbacks.onFileStart?.(file.name, index + 1, files.length);
+
     if (isZipFile(file)) {
       layerSources.push(...(await collectZipLayerSources(file, callbacks)));
       continue;
@@ -55,7 +84,7 @@ export async function collectLayerSources(files, callbacks = {}) {
 
     layerSources.push({
       name: file.name,
-      readText: () => file.text(),
+      readText: (onProgress) => readFileText(file, onProgress),
     });
   }
 
@@ -79,6 +108,32 @@ export function repeatLayerSources(layerSources, repeat, { offset = {} } = {}) {
       }),
     })),
   );
+}
+
+function readFileText(file, onProgress = () => {}) {
+  if (typeof FileReader === "undefined") {
+    return file.text().then((text) => {
+      onProgress(1);
+      return text;
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.min(event.loaded / event.total, 1));
+      }
+    };
+    reader.onload = () => {
+      onProgress(1);
+      resolve(String(reader.result ?? ""));
+    };
+    reader.onerror = () => {
+      reject(reader.error ?? new Error(`Failed to read ${file.name}`));
+    };
+    reader.readAsText(file);
+  });
 }
 
 function getNumberParam(params, key, fallback) {
@@ -118,6 +173,7 @@ async function collectZipLayerSources(
     onArchiveWarning = () => {},
     onArchiveInfo = () => {},
     onArchiveError = () => {},
+    onArchiveStart = () => {},
   } = {},
 ) {
   if (!jsZip) {
@@ -126,6 +182,7 @@ async function collectZipLayerSources(
   }
 
   try {
+    onArchiveStart(file.name);
     const zip = await jsZip.loadAsync(file);
     const entries = Object.values(zip.files)
       .filter(
@@ -153,7 +210,10 @@ async function collectZipLayerSources(
 
     return entries.map((entry) => ({
       name: getBaseFileName(entry.name),
-      readText: () => entry.async("string"),
+      readText: (onProgress = () => {}) =>
+        entry.async("string", (metadata) => {
+          onProgress(Math.min(metadata.percent / 100, 1));
+        }),
     }));
   } catch (error) {
     onArchiveError(file.name, error);
