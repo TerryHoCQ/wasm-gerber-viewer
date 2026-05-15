@@ -23,6 +23,7 @@ pub struct LayerMetadata {
     boundary: Boundary,              // Combined boundary
     fbo_dirty: bool,
     fbo_transform: Option<[f32; 9]>,
+    cpu_geometry_released: bool,
 }
 
 /// WebGL renderer for Gerber graphics with multi-layer support
@@ -93,6 +94,7 @@ impl Renderer {
             boundary,
             fbo_dirty: true,
             fbo_transform: None,
+            cpu_geometry_released: false,
         };
 
         // Find next free slot or extend vec
@@ -392,7 +394,10 @@ impl Renderer {
         if let Some(buf) = cache.triangle_vertex_buffer {
             gl.delete_buffer(Some(&buf));
         }
-        if let Some(buf) = cache.triangle_hole_center_buffer {
+        if let Some(buf) = cache.triangle_hole_x_buffer {
+            gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.triangle_hole_y_buffer {
             gl.delete_buffer(Some(&buf));
         }
         if let Some(buf) = cache.triangle_hole_radius_buffer {
@@ -402,13 +407,19 @@ impl Renderer {
         if let Some(vao) = cache.circle_vao {
             gl.delete_vertex_array(Some(&vao));
         }
-        if let Some(buf) = cache.circle_center_buffer {
+        if let Some(buf) = cache.circle_center_x_buffer {
+            gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.circle_center_y_buffer {
             gl.delete_buffer(Some(&buf));
         }
         if let Some(buf) = cache.circle_radius_buffer {
             gl.delete_buffer(Some(&buf));
         }
-        if let Some(buf) = cache.circle_hole_center_buffer {
+        if let Some(buf) = cache.circle_hole_x_buffer {
+            gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.circle_hole_y_buffer {
             gl.delete_buffer(Some(&buf));
         }
         if let Some(buf) = cache.circle_hole_radius_buffer {
@@ -418,7 +429,10 @@ impl Renderer {
         if let Some(vao) = cache.arc_vao {
             gl.delete_vertex_array(Some(&vao));
         }
-        if let Some(buf) = cache.arc_center_buffer {
+        if let Some(buf) = cache.arc_center_x_buffer {
+            gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.arc_center_y_buffer {
             gl.delete_buffer(Some(&buf));
         }
         if let Some(buf) = cache.arc_radius_buffer {
@@ -437,7 +451,10 @@ impl Renderer {
         if let Some(vao) = cache.thermal_vao {
             gl.delete_vertex_array(Some(&vao));
         }
-        if let Some(buf) = cache.thermal_center_buffer {
+        if let Some(buf) = cache.thermal_center_x_buffer {
+            gl.delete_buffer(Some(&buf));
+        }
+        if let Some(buf) = cache.thermal_center_y_buffer {
             gl.delete_buffer(Some(&buf));
         }
         if let Some(buf) = cache.thermal_outer_diameter_buffer {
@@ -566,31 +583,6 @@ impl Renderer {
         Ok(buffer)
     }
 
-    /// Create and bind a dual-channel (2D) instance buffer
-    fn create_instance_buffer_2d(
-        gl: &WebGl2RenderingContext,
-        data: &[f32],
-        program: &ShaderProgram,
-        attr_name: &str,
-        divisor: u32,
-    ) -> Result<WebGlBuffer, JsValue> {
-        let buffer = gl
-            .create_buffer()
-            .ok_or_else(|| JsValue::from_str("Failed to create buffer"))?;
-        gl.bind_buffer(ARRAY_BUFFER, Some(&buffer));
-        unsafe {
-            let array = Float32Array::view(data);
-            gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
-        }
-        let loc = program.attributes.get(attr_name).ok_or_else(|| {
-            JsValue::from_str(&format!("Missing shader attribute: {}", attr_name))
-        })?;
-        gl.enable_vertex_attrib_array(*loc);
-        gl.vertex_attrib_pointer_with_i32(*loc, 2, FLOAT, false, 0, 0);
-        gl.vertex_attrib_divisor(*loc, divisor);
-        Ok(buffer)
-    }
-
     fn use_constant_vertex_attrib_1f(
         gl: &WebGl2RenderingContext,
         program: &ShaderProgram,
@@ -601,41 +593,6 @@ impl Renderer {
         gl.disable_vertex_attrib_array(loc);
         gl.vertex_attrib1f(loc, x);
         Ok(())
-    }
-
-    fn use_constant_vertex_attrib_2f(
-        gl: &WebGl2RenderingContext,
-        program: &ShaderProgram,
-        attr_name: &str,
-        x: f32,
-        y: f32,
-    ) -> Result<(), JsValue> {
-        let loc = Self::shader_attribute(program, attr_name)?;
-        gl.disable_vertex_attrib_array(loc);
-        gl.vertex_attrib2f(loc, x, y);
-        Ok(())
-    }
-
-    /// Interleave x,y arrays into a single flat array
-    fn interleave_xy(x: &[f32], y: &[f32], label: &str) -> Result<Vec<f32>, JsValue> {
-        let capacity = x.len().checked_mul(2).ok_or_else(|| {
-            JsValue::from_str(&format!(
-                "Renderer temporary buffer is too large: {} size overflow",
-                label
-            ))
-        })?;
-        let mut result = Vec::new();
-        result.try_reserve_exact(capacity).map_err(|_| {
-            JsValue::from_str(&format!(
-                "Not enough memory for renderer temporary buffer: {} ({} values)",
-                label, capacity
-            ))
-        })?;
-        for i in 0..x.len() {
-            result.push(x[i]);
-            result.push(y[i]);
-        }
-        Ok(result)
     }
 
     /// Create quad buffer for instanced rendering
@@ -774,22 +731,6 @@ impl Renderer {
             return Err(JsValue::from_str("Invalid layer index"));
         }
 
-        // Check if data is empty (short-lived borrow)
-        {
-            let layer = if let Some(l) = &self.layers[layer_id] {
-                l
-            } else {
-                return Err(JsValue::from_str("Layer deallocated"));
-            };
-            if layer.gerber_data[sublayer_idx]
-                .triangles
-                .vertices
-                .is_empty()
-            {
-                return Ok(());
-            }
-        }
-
         let program = &self.programs.triangle;
         self.gl.use_program(Some(&program.program));
 
@@ -800,11 +741,15 @@ impl Renderer {
             } else {
                 return Err(JsValue::from_str("Layer deallocated"));
             };
-            let triangles = &layer.gerber_data[sublayer_idx].triangles;
-            let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
 
             // Check if VAO is cached for this sublayer
-            if buffer_cache.triangle_vao.is_none() {
+            if layer.buffer_caches[sublayer_idx].triangle_vao.is_none() {
+                let triangles = &layer.gerber_data[sublayer_idx].triangles;
+                if triangles.vertices.is_empty() {
+                    return Ok(());
+                }
+                let vertex_count = (triangles.vertices.len() / 2) as i32;
+
                 // Create VAO
                 let vao = self
                     .gl
@@ -831,13 +776,8 @@ impl Renderer {
                     .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
 
                 if triangles.hole_radius.is_empty() {
-                    Self::use_constant_vertex_attrib_2f(
-                        &self.gl,
-                        program,
-                        "hole_center_instance",
-                        0.0,
-                        0.0,
-                    )?;
+                    Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_x_instance", 0.0)?;
+                    Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_y_instance", 0.0)?;
                     Self::use_constant_vertex_attrib_1f(
                         &self.gl,
                         program,
@@ -845,49 +785,31 @@ impl Renderer {
                         0.0,
                     )?;
                 } else {
-                    // Create regular attribute buffers for hole data (per-vertex)
-                    let hole_centers = Self::interleave_xy(
+                    let hole_x_buffer = Self::create_instance_buffer(
+                        &self.gl,
                         &triangles.hole_x,
-                        &triangles.hole_y,
-                        "triangle holes",
+                        program,
+                        "hole_x_instance",
+                        0,
                     )?;
-                    let hole_center_buffer = self
-                        .gl
-                        .create_buffer()
-                        .ok_or_else(|| JsValue::from_str("Failed to create hole center buffer"))?;
-                    self.gl.bind_buffer(ARRAY_BUFFER, Some(&hole_center_buffer));
-                    unsafe {
-                        let array = Float32Array::view(&hole_centers);
-                        self.gl.buffer_data_with_array_buffer_view(
-                            ARRAY_BUFFER,
-                            &array,
-                            STATIC_DRAW,
-                        );
-                    }
-                    let hole_center_loc = Self::shader_attribute(program, "hole_center_instance")?;
-                    self.gl.enable_vertex_attrib_array(hole_center_loc);
-                    self.gl
-                        .vertex_attrib_pointer_with_i32(hole_center_loc, 2, FLOAT, false, 0, 0);
+                    let hole_y_buffer = Self::create_instance_buffer(
+                        &self.gl,
+                        &triangles.hole_y,
+                        program,
+                        "hole_y_instance",
+                        0,
+                    )?;
+                    let hole_radius_buffer = Self::create_instance_buffer(
+                        &self.gl,
+                        &triangles.hole_radius,
+                        program,
+                        "hole_radius_instance",
+                        0,
+                    )?;
 
-                    let hole_radius_buffer = self
-                        .gl
-                        .create_buffer()
-                        .ok_or_else(|| JsValue::from_str("Failed to create hole radius buffer"))?;
-                    self.gl.bind_buffer(ARRAY_BUFFER, Some(&hole_radius_buffer));
-                    unsafe {
-                        let array = Float32Array::view(&triangles.hole_radius);
-                        self.gl.buffer_data_with_array_buffer_view(
-                            ARRAY_BUFFER,
-                            &array,
-                            STATIC_DRAW,
-                        );
-                    }
-                    let hole_radius_loc = Self::shader_attribute(program, "hole_radius_instance")?;
-                    self.gl.enable_vertex_attrib_array(hole_radius_loc);
-                    self.gl
-                        .vertex_attrib_pointer_with_i32(hole_radius_loc, 1, FLOAT, false, 0, 0);
-
-                    buffer_cache.triangle_hole_center_buffer = Some(hole_center_buffer);
+                    let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+                    buffer_cache.triangle_hole_x_buffer = Some(hole_x_buffer);
+                    buffer_cache.triangle_hole_y_buffer = Some(hole_y_buffer);
                     buffer_cache.triangle_hole_radius_buffer = Some(hole_radius_buffer);
                 }
 
@@ -895,12 +817,21 @@ impl Renderer {
                 self.gl.bind_vertex_array(None);
 
                 // Cache VAO and buffers for this sublayer
+                let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
                 buffer_cache.triangle_vao = Some(vao);
+                buffer_cache.triangle_vertex_count = vertex_count;
                 buffer_cache.triangle_vertex_buffer = Some(vertex_buffer);
+                layer.gerber_data[sublayer_idx]
+                    .triangles
+                    .release_cpu_geometry();
+                layer.cpu_geometry_released = true;
             }
 
-            triangles.vertices.len() / 2
+            layer.buffer_caches[sublayer_idx].triangle_vertex_count
         }; // Borrow ends here
+        if vertex_count == 0 {
+            return Ok(());
+        }
 
         // Rendering phase (new borrow)
         let layer = self.get_layer(layer_id)?;
@@ -910,13 +841,8 @@ impl Renderer {
         self.gl
             .bind_vertex_array(buffer_cache.triangle_vao.as_ref());
         if buffer_cache.triangle_hole_radius_buffer.is_none() {
-            Self::use_constant_vertex_attrib_2f(
-                &self.gl,
-                program,
-                "hole_center_instance",
-                0.0,
-                0.0,
-            )?;
+            Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_x_instance", 0.0)?;
+            Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_y_instance", 0.0)?;
             Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_radius_instance", 0.0)?;
         }
 
@@ -930,7 +856,7 @@ impl Renderer {
         }
 
         // Draw
-        self.gl.draw_arrays(TRIANGLES, 0, vertex_count as i32);
+        self.gl.draw_arrays(TRIANGLES, 0, vertex_count);
 
         // Unbind VAO to prevent state leakage
         self.gl.bind_vertex_array(None);
@@ -946,96 +872,114 @@ impl Renderer {
         layer_id: usize,
         sublayer_idx: usize,
     ) -> Result<(), JsValue> {
-        // Check if data is empty (short-lived borrow)
-        let instance_count = {
-            let layer = self.get_layer(layer_id)?;
-            layer.gerber_data[sublayer_idx].circles.x.len()
-        };
-        if instance_count == 0 {
-            return Ok(());
-        }
-
         let program = &self.programs.circle;
         self.gl.use_program(Some(&program.program));
 
-        // Get mutable reference to buffer cache and immutable reference to data
-        // Split borrowing: gerber_data and buffer_caches are different fields
-        let layer = self.layers[layer_id]
-            .as_mut()
-            .ok_or_else(|| JsValue::from_str("Layer not found"))?;
-        let circles = &layer.gerber_data[sublayer_idx].circles;
-        let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+        let instance_count = {
+            let layer = self.layers[layer_id]
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("Layer not found"))?;
 
-        // Check if VAO is cached for this sublayer
-        if buffer_cache.circle_vao.is_none() {
-            // Create VAO
-            let vao = self
-                .gl
-                .create_vertex_array()
-                .ok_or_else(|| JsValue::from_str("Failed to create VAO"))?;
-            self.gl.bind_vertex_array(Some(&vao));
+            if layer.buffer_caches[sublayer_idx].circle_vao.is_none() {
+                let circles = &layer.gerber_data[sublayer_idx].circles;
+                if circles.x.is_empty() {
+                    return Ok(());
+                }
+                let instance_count = circles.x.len() as i32;
 
-            // Bind shared quad buffer for position attribute
-            self.gl.bind_buffer(ARRAY_BUFFER, Some(&self.quad_buffer));
-            let position_loc = Self::shader_attribute(program, "position")?;
-            self.gl.enable_vertex_attrib_array(position_loc);
-            self.gl
-                .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
+                // Create VAO
+                let vao = self
+                    .gl
+                    .create_vertex_array()
+                    .ok_or_else(|| JsValue::from_str("Failed to create VAO"))?;
+                self.gl.bind_vertex_array(Some(&vao));
 
-            // Create instance buffers
-            let centers = Self::interleave_xy(&circles.x, &circles.y, "circle centers")?;
-            let center_buffer =
-                Self::create_instance_buffer_2d(&self.gl, &centers, program, "center_instance", 1)?;
-            let radius_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &circles.radius,
-                program,
-                "radius_instance",
-                1,
-            )?;
-            if circles.hole_radius.is_empty() {
-                Self::use_constant_vertex_attrib_2f(
+                // Bind shared quad buffer for position attribute
+                self.gl.bind_buffer(ARRAY_BUFFER, Some(&self.quad_buffer));
+                let position_loc = Self::shader_attribute(program, "position")?;
+                self.gl.enable_vertex_attrib_array(position_loc);
+                self.gl
+                    .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
+
+                let center_x_buffer = Self::create_instance_buffer(
                     &self.gl,
+                    &circles.x,
                     program,
-                    "hole_center_instance",
-                    0.0,
-                    0.0,
-                )?;
-                Self::use_constant_vertex_attrib_1f(
-                    &self.gl,
-                    program,
-                    "hole_radius_instance",
-                    0.0,
-                )?;
-            } else {
-                let hole_centers =
-                    Self::interleave_xy(&circles.hole_x, &circles.hole_y, "circle holes")?;
-                let hole_center_buffer = Self::create_instance_buffer_2d(
-                    &self.gl,
-                    &hole_centers,
-                    program,
-                    "hole_center_instance",
+                    "center_x_instance",
                     1,
                 )?;
-                let hole_radius_buffer = Self::create_instance_buffer(
+                let center_y_buffer = Self::create_instance_buffer(
                     &self.gl,
-                    &circles.hole_radius,
+                    &circles.y,
                     program,
-                    "hole_radius_instance",
+                    "center_y_instance",
                     1,
                 )?;
+                let radius_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &circles.radius,
+                    program,
+                    "radius_instance",
+                    1,
+                )?;
+                if circles.hole_radius.is_empty() {
+                    Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_x_instance", 0.0)?;
+                    Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_y_instance", 0.0)?;
+                    Self::use_constant_vertex_attrib_1f(
+                        &self.gl,
+                        program,
+                        "hole_radius_instance",
+                        0.0,
+                    )?;
+                } else {
+                    let hole_x_buffer = Self::create_instance_buffer(
+                        &self.gl,
+                        &circles.hole_x,
+                        program,
+                        "hole_x_instance",
+                        1,
+                    )?;
+                    let hole_y_buffer = Self::create_instance_buffer(
+                        &self.gl,
+                        &circles.hole_y,
+                        program,
+                        "hole_y_instance",
+                        1,
+                    )?;
+                    let hole_radius_buffer = Self::create_instance_buffer(
+                        &self.gl,
+                        &circles.hole_radius,
+                        program,
+                        "hole_radius_instance",
+                        1,
+                    )?;
 
-                buffer_cache.circle_hole_center_buffer = Some(hole_center_buffer);
-                buffer_cache.circle_hole_radius_buffer = Some(hole_radius_buffer);
+                    let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+                    buffer_cache.circle_hole_x_buffer = Some(hole_x_buffer);
+                    buffer_cache.circle_hole_y_buffer = Some(hole_y_buffer);
+                    buffer_cache.circle_hole_radius_buffer = Some(hole_radius_buffer);
+                }
+
+                // Unbind VAO
+                self.gl.bind_vertex_array(None);
+
+                // Cache VAO and buffers for this sublayer
+                let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+                buffer_cache.circle_vao = Some(vao);
+                buffer_cache.circle_instance_count = instance_count;
+                buffer_cache.circle_center_x_buffer = Some(center_x_buffer);
+                buffer_cache.circle_center_y_buffer = Some(center_y_buffer);
+                buffer_cache.circle_radius_buffer = Some(radius_buffer);
+                layer.gerber_data[sublayer_idx]
+                    .circles
+                    .release_cpu_geometry();
+                layer.cpu_geometry_released = true;
             }
 
-            // Unbind VAO
-            self.gl.bind_vertex_array(None);
-
-            // Cache VAO and buffers for this sublayer
-            buffer_cache.circle_vao = Some(vao);
-            buffer_cache.circle_center_buffer = Some(center_buffer);
-            buffer_cache.circle_radius_buffer = Some(radius_buffer);
+            layer.buffer_caches[sublayer_idx].circle_instance_count
+        };
+        if instance_count == 0 {
+            return Ok(());
         }
 
         // Re-get immutable reference for rendering
@@ -1045,13 +989,8 @@ impl Renderer {
         // Bind cached VAO for this sublayer
         self.gl.bind_vertex_array(buffer_cache.circle_vao.as_ref());
         if buffer_cache.circle_hole_radius_buffer.is_none() {
-            Self::use_constant_vertex_attrib_2f(
-                &self.gl,
-                program,
-                "hole_center_instance",
-                0.0,
-                0.0,
-            )?;
+            Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_x_instance", 0.0)?;
+            Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_y_instance", 0.0)?;
             Self::use_constant_vertex_attrib_1f(&self.gl, program, "hole_radius_instance", 0.0)?;
         }
 
@@ -1066,7 +1005,7 @@ impl Renderer {
 
         // Draw
         self.gl
-            .draw_arrays_instanced(TRIANGLES, 0, 6, instance_count as i32);
+            .draw_arrays_instanced(TRIANGLES, 0, 6, instance_count);
 
         // Unbind VAO to prevent state leakage
         self.gl.bind_vertex_array(None);
@@ -1082,85 +1021,99 @@ impl Renderer {
         layer_id: usize,
         sublayer_idx: usize,
     ) -> Result<(), JsValue> {
-        // Check if data is empty (short-lived borrow)
-        let instance_count = {
-            let layer = self.get_layer(layer_id)?;
-            layer.gerber_data[sublayer_idx].arcs.x.len()
-        };
-        if instance_count == 0 {
-            return Ok(());
-        }
-
         let program = &self.programs.arc;
         self.gl.use_program(Some(&program.program));
 
-        // Get mutable reference to buffer cache and immutable reference to data
-        // Split borrowing: gerber_data and buffer_caches are different fields
-        let layer = self.layers[layer_id]
-            .as_mut()
-            .ok_or_else(|| JsValue::from_str("Layer not found"))?;
-        let arcs = &layer.gerber_data[sublayer_idx].arcs;
-        let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+        let instance_count = {
+            let layer = self.layers[layer_id]
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("Layer not found"))?;
 
-        // Check if VAO is cached for this sublayer
-        if buffer_cache.arc_vao.is_none() {
-            // Create VAO
-            let vao = self
-                .gl
-                .create_vertex_array()
-                .ok_or_else(|| JsValue::from_str("Failed to create VAO"))?;
-            self.gl.bind_vertex_array(Some(&vao));
+            if layer.buffer_caches[sublayer_idx].arc_vao.is_none() {
+                let arcs = &layer.gerber_data[sublayer_idx].arcs;
+                if arcs.x.is_empty() {
+                    return Ok(());
+                }
+                let instance_count = arcs.x.len() as i32;
 
-            // Bind shared quad buffer for position attribute
-            self.gl.bind_buffer(ARRAY_BUFFER, Some(&self.quad_buffer));
-            let position_loc = Self::shader_attribute(program, "position")?;
-            self.gl.enable_vertex_attrib_array(position_loc);
-            self.gl
-                .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
+                // Create VAO
+                let vao = self
+                    .gl
+                    .create_vertex_array()
+                    .ok_or_else(|| JsValue::from_str("Failed to create VAO"))?;
+                self.gl.bind_vertex_array(Some(&vao));
 
-            // Create instance buffers
-            let centers = Self::interleave_xy(&arcs.x, &arcs.y, "arc centers")?;
-            let center_buffer =
-                Self::create_instance_buffer_2d(&self.gl, &centers, program, "center_instance", 1)?;
-            let radius_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &arcs.radius,
-                program,
-                "radius_instance",
-                1,
-            )?;
-            let start_angle_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &arcs.start_angle,
-                program,
-                "startAngle_instance",
-                1,
-            )?;
-            let sweep_angle_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &arcs.sweep_angle,
-                program,
-                "sweepAngle_instance",
-                1,
-            )?;
-            let thickness_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &arcs.thickness,
-                program,
-                "thickness_instance",
-                1,
-            )?;
+                // Bind shared quad buffer for position attribute
+                self.gl.bind_buffer(ARRAY_BUFFER, Some(&self.quad_buffer));
+                let position_loc = Self::shader_attribute(program, "position")?;
+                self.gl.enable_vertex_attrib_array(position_loc);
+                self.gl
+                    .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
 
-            // Unbind VAO
-            self.gl.bind_vertex_array(None);
+                let center_x_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &arcs.x,
+                    program,
+                    "center_x_instance",
+                    1,
+                )?;
+                let center_y_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &arcs.y,
+                    program,
+                    "center_y_instance",
+                    1,
+                )?;
+                let radius_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &arcs.radius,
+                    program,
+                    "radius_instance",
+                    1,
+                )?;
+                let start_angle_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &arcs.start_angle,
+                    program,
+                    "startAngle_instance",
+                    1,
+                )?;
+                let sweep_angle_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &arcs.sweep_angle,
+                    program,
+                    "sweepAngle_instance",
+                    1,
+                )?;
+                let thickness_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &arcs.thickness,
+                    program,
+                    "thickness_instance",
+                    1,
+                )?;
 
-            // Cache VAO and buffers for this sublayer
-            buffer_cache.arc_vao = Some(vao);
-            buffer_cache.arc_center_buffer = Some(center_buffer);
-            buffer_cache.arc_radius_buffer = Some(radius_buffer);
-            buffer_cache.arc_start_angle_buffer = Some(start_angle_buffer);
-            buffer_cache.arc_sweep_angle_buffer = Some(sweep_angle_buffer);
-            buffer_cache.arc_thickness_buffer = Some(thickness_buffer);
+                // Unbind VAO
+                self.gl.bind_vertex_array(None);
+
+                // Cache VAO and buffers for this sublayer
+                let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+                buffer_cache.arc_vao = Some(vao);
+                buffer_cache.arc_instance_count = instance_count;
+                buffer_cache.arc_center_x_buffer = Some(center_x_buffer);
+                buffer_cache.arc_center_y_buffer = Some(center_y_buffer);
+                buffer_cache.arc_radius_buffer = Some(radius_buffer);
+                buffer_cache.arc_start_angle_buffer = Some(start_angle_buffer);
+                buffer_cache.arc_sweep_angle_buffer = Some(sweep_angle_buffer);
+                buffer_cache.arc_thickness_buffer = Some(thickness_buffer);
+                layer.gerber_data[sublayer_idx].arcs.release_cpu_geometry();
+                layer.cpu_geometry_released = true;
+            }
+
+            layer.buffer_caches[sublayer_idx].arc_instance_count
+        };
+        if instance_count == 0 {
+            return Ok(());
         }
 
         // Re-get immutable reference for rendering
@@ -1181,7 +1134,7 @@ impl Renderer {
 
         // Draw
         self.gl
-            .draw_arrays_instanced(TRIANGLES, 0, 6, instance_count as i32);
+            .draw_arrays_instanced(TRIANGLES, 0, 6, instance_count);
 
         // Unbind VAO to prevent state leakage
         self.gl.bind_vertex_array(None);
@@ -1197,85 +1150,101 @@ impl Renderer {
         layer_id: usize,
         sublayer_idx: usize,
     ) -> Result<(), JsValue> {
-        // Check if data is empty (short-lived borrow)
-        let instance_count = {
-            let layer = self.get_layer(layer_id)?;
-            layer.gerber_data[sublayer_idx].thermals.x.len()
-        };
-        if instance_count == 0 {
-            return Ok(());
-        }
-
         let program = &self.programs.thermal;
         self.gl.use_program(Some(&program.program));
 
-        // Get mutable reference to buffer cache and immutable reference to data
-        // Split borrowing: gerber_data and buffer_caches are different fields
-        let layer = self.layers[layer_id]
-            .as_mut()
-            .ok_or_else(|| JsValue::from_str("Layer not found"))?;
-        let thermals = &layer.gerber_data[sublayer_idx].thermals;
-        let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+        let instance_count = {
+            let layer = self.layers[layer_id]
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("Layer not found"))?;
 
-        // Check if VAO is cached for this sublayer
-        if buffer_cache.thermal_vao.is_none() {
-            // Create VAO
-            let vao = self
-                .gl
-                .create_vertex_array()
-                .ok_or_else(|| JsValue::from_str("Failed to create VAO"))?;
-            self.gl.bind_vertex_array(Some(&vao));
+            if layer.buffer_caches[sublayer_idx].thermal_vao.is_none() {
+                let thermals = &layer.gerber_data[sublayer_idx].thermals;
+                if thermals.x.is_empty() {
+                    return Ok(());
+                }
+                let instance_count = thermals.x.len() as i32;
 
-            // Bind shared quad buffer for position attribute
-            self.gl.bind_buffer(ARRAY_BUFFER, Some(&self.quad_buffer));
-            let position_loc = Self::shader_attribute(program, "position")?;
-            self.gl.enable_vertex_attrib_array(position_loc);
-            self.gl
-                .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
+                // Create VAO
+                let vao = self
+                    .gl
+                    .create_vertex_array()
+                    .ok_or_else(|| JsValue::from_str("Failed to create VAO"))?;
+                self.gl.bind_vertex_array(Some(&vao));
 
-            // Create instance buffers
-            let centers = Self::interleave_xy(&thermals.x, &thermals.y, "thermal centers")?;
-            let center_buffer =
-                Self::create_instance_buffer_2d(&self.gl, &centers, program, "center_instance", 1)?;
-            let outer_diameter_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &thermals.outer_diameter,
-                program,
-                "outer_diameter_instance",
-                1,
-            )?;
-            let inner_diameter_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &thermals.inner_diameter,
-                program,
-                "inner_diameter_instance",
-                1,
-            )?;
-            let gap_thickness_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &thermals.gap_thickness,
-                program,
-                "gap_thickness_instance",
-                1,
-            )?;
-            let rotation_buffer = Self::create_instance_buffer(
-                &self.gl,
-                &thermals.rotation,
-                program,
-                "rotation_instance",
-                1,
-            )?;
+                // Bind shared quad buffer for position attribute
+                self.gl.bind_buffer(ARRAY_BUFFER, Some(&self.quad_buffer));
+                let position_loc = Self::shader_attribute(program, "position")?;
+                self.gl.enable_vertex_attrib_array(position_loc);
+                self.gl
+                    .vertex_attrib_pointer_with_i32(position_loc, 2, FLOAT, false, 0, 0);
 
-            // Unbind VAO
-            self.gl.bind_vertex_array(None);
+                let center_x_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &thermals.x,
+                    program,
+                    "center_x_instance",
+                    1,
+                )?;
+                let center_y_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &thermals.y,
+                    program,
+                    "center_y_instance",
+                    1,
+                )?;
+                let outer_diameter_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &thermals.outer_diameter,
+                    program,
+                    "outer_diameter_instance",
+                    1,
+                )?;
+                let inner_diameter_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &thermals.inner_diameter,
+                    program,
+                    "inner_diameter_instance",
+                    1,
+                )?;
+                let gap_thickness_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &thermals.gap_thickness,
+                    program,
+                    "gap_thickness_instance",
+                    1,
+                )?;
+                let rotation_buffer = Self::create_instance_buffer(
+                    &self.gl,
+                    &thermals.rotation,
+                    program,
+                    "rotation_instance",
+                    1,
+                )?;
 
-            // Cache VAO and buffers for this sublayer
-            buffer_cache.thermal_vao = Some(vao);
-            buffer_cache.thermal_center_buffer = Some(center_buffer);
-            buffer_cache.thermal_outer_diameter_buffer = Some(outer_diameter_buffer);
-            buffer_cache.thermal_inner_diameter_buffer = Some(inner_diameter_buffer);
-            buffer_cache.thermal_gap_thickness_buffer = Some(gap_thickness_buffer);
-            buffer_cache.thermal_rotation_buffer = Some(rotation_buffer);
+                // Unbind VAO
+                self.gl.bind_vertex_array(None);
+
+                // Cache VAO and buffers for this sublayer
+                let buffer_cache = &mut layer.buffer_caches[sublayer_idx];
+                buffer_cache.thermal_vao = Some(vao);
+                buffer_cache.thermal_instance_count = instance_count;
+                buffer_cache.thermal_center_x_buffer = Some(center_x_buffer);
+                buffer_cache.thermal_center_y_buffer = Some(center_y_buffer);
+                buffer_cache.thermal_outer_diameter_buffer = Some(outer_diameter_buffer);
+                buffer_cache.thermal_inner_diameter_buffer = Some(inner_diameter_buffer);
+                buffer_cache.thermal_gap_thickness_buffer = Some(gap_thickness_buffer);
+                buffer_cache.thermal_rotation_buffer = Some(rotation_buffer);
+                layer.gerber_data[sublayer_idx]
+                    .thermals
+                    .release_cpu_geometry();
+                layer.cpu_geometry_released = true;
+            }
+
+            layer.buffer_caches[sublayer_idx].thermal_instance_count
+        };
+        if instance_count == 0 {
+            return Ok(());
         }
 
         // Re-get immutable reference for rendering
@@ -1296,7 +1265,7 @@ impl Renderer {
 
         // Draw
         self.gl
-            .draw_arrays_instanced(TRIANGLES, 0, 6, instance_count as i32);
+            .draw_arrays_instanced(TRIANGLES, 0, 6, instance_count);
 
         // Unbind VAO to prevent state leakage
         self.gl.bind_vertex_array(None);
@@ -1640,6 +1609,17 @@ impl Renderer {
     /// Recreate WebGL-owned resources after the browser restores a lost context.
     /// Parsed Gerber geometry and stable layer IDs are preserved.
     pub fn restore_context(&mut self, gl: WebGl2RenderingContext) -> Result<(), JsValue> {
+        if self
+            .layers
+            .iter()
+            .flatten()
+            .any(|layer| layer.cpu_geometry_released)
+        {
+            return Err(JsValue::from_str(
+                "Layer geometry has been released from WebAssembly memory; rebuild layers from source files to restore WebGL context",
+            ));
+        }
+
         let programs = ShaderPrograms::new(&gl)?;
         let quad_buffer = Self::create_quad_buffer(&gl)?;
         let (width, height) = Self::get_canvas_size_from_gl(&gl)?;
