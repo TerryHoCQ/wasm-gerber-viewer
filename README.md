@@ -24,7 +24,6 @@ Website:
 - Horizontal/vertical flip controls
 - Ruler measurements with mm/inch unit switching
 - Screenshot export with resolution options, including ruler overlays
-- Drag-and-drop upload and per-file size validation (300MB limit)
 
 ## Requirements
 
