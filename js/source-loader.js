@@ -5,8 +5,6 @@ import {
   isZipFile,
 } from "./file-utils.js";
 
-export const MAX_INITIAL_SOURCE_REPEAT = 10;
-
 export function getInitialSourceUrl(search = globalThis.location?.search ?? "") {
   const params = new URLSearchParams(search);
   return params.get("url") || params.get("source") || params.get("file");
@@ -20,7 +18,7 @@ export function getInitialSourceRepeat(search = globalThis.location?.search ?? "
   const repeat = Number.parseInt(rawRepeat, 10);
   if (!Number.isFinite(repeat)) return 1;
 
-  return Math.min(Math.max(repeat, 1), MAX_INITIAL_SOURCE_REPEAT);
+  return Math.max(repeat, 1);
 }
 
 export async function fetchRemoteFile(url) {
