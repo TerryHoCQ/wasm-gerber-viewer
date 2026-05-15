@@ -28,9 +28,10 @@ Website:
 
 ## Requirements
 
-- **Rust** - [Install Rust](https://rustup.rs/)
-- **wasm-pack** - Install via: `cargo install wasm-pack`
-- **Python 3** - For running the local HTTP server
+- **Rust stable** - install with [rustup](https://rustup.rs/)
+- **wasm-pack** - `cargo install wasm-pack`
+- **Python 3** or another static file server
+- **Modern WebGL2 browser** - Chrome, Firefox, Safari, or Edge
 
 ## Quick Start
 
@@ -38,40 +39,68 @@ Website:
 git clone https://github.com/dsafdsaf132/wasm-gerber-viewer.git
 cd wasm-gerber-viewer
 
-# Build WASM module
+rustup target add wasm32-unknown-unknown
 wasm-pack build wasm --target web --out-dir pkg --release
 
-# Start development server
 python3 -m http.server 8000
 ```
 
 Open `http://localhost:8000` and upload Gerber files.
 
+When Rust or WASM files change, rebuild the package before refreshing the page:
+
+```bash
+wasm-pack build wasm --target web --out-dir pkg --release
+```
+
+The CI/Vercel build uses `scripts/vercel-build.sh`, which reuses `wasm/pkg`
+when the WASM sources have not changed.
+
 ## Project Structure
 
 ```text
 wasm-gerber-viewer/
-├── index.html                             # Main page
-├── js/                                    # JavaScript files
-│   └── main.js                            # Main application (GerberViewer)
-├── css/                                   # Stylesheets
-│   └── style.css                          # Application styles
-└── wasm/                                  # Rust/WASM module
-    ├── Cargo.toml                         # Rust dependencies
-    └── src/                               # Rust source
-        ├── lib.rs                         # WASM entry point (GerberProcessor)
-        ├── shape.rs                       # Geometry data structures
-        ├── parser.rs                      # Parser entry point and main logic
-        ├── parser/                        # Gerber file parsing submodules
-        │   ├── geometry.rs                # Geometric operations and primitives
-        │   ├── state.rs                   # Parser state and configuration
-        │   ├── aperture.rs                # Aperture definitions and parsing
-        │   └── aperture_macro.rs          # Aperture macro definitions and parsing
-        ├── renderer.rs                    # Renderer core logic
-        └── renderer/                      # WebGL2 rendering submodules
-            ├── shader.rs                  # Shader compilation and WebGL constants
-            ├── camera.rs                  # Camera and viewport transformations
-            └── buffer.rs                  # GPU buffer and framebuffer structures
+├── index.html                         # Application shell
+├── css/
+│   └── style.css                      # UI styles
+├── js/
+│   ├── main.js                        # GerberViewer orchestration
+│   ├── config.js                      # Shared constants
+│   ├── diagnostics.js                 # Diagnostics panel
+│   ├── dom-elements.js                # DOM lookup helpers
+│   ├── drawer-controller.js           # Drawer interactions
+│   ├── file-utils.js                  # File and error helpers
+│   ├── layer-filters.js               # Layer type filters
+│   ├── layer-list.js                  # Layer list rendering
+│   ├── measurements.js                # Ruler measurements
+│   ├── notifications.js               # Toast notifications
+│   ├── screenshot-exporter.js         # Screenshot export
+│   ├── source-loader.js               # Local, archive, and URL loading
+│   └── viewport.js                    # Camera and viewport math
+├── wasm/
+│   ├── Cargo.toml                     # Rust crate manifest
+│   ├── pkg/                           # Generated wasm-pack output
+│   └── src/
+│       ├── lib.rs                     # WASM API entry point
+│       ├── parser.rs                  # Gerber parser entry point
+│       ├── parser/                    # Parser modules
+│       │   ├── aperture.rs            # Apertures
+│       │   ├── aperture_macro.rs      # Aperture macros
+│       │   ├── geometry.rs            # Geometry helpers
+│       │   ├── state.rs               # Parser state
+│       │   └── tests.rs               # Parser tests
+│       ├── renderer.rs                # WebGL renderer
+│       ├── renderer/                  # Renderer modules
+│       │   ├── buffer.rs              # GPU resource structs
+│       │   ├── camera.rs              # Transform math
+│       │   └── shader.rs              # Shader programs
+│       └── shape.rs                   # Geometry data model
+├── demo/                              # Sample and performance Gerbers
+├── docs/                              # README assets
+├── scripts/
+│   └── vercel-build.sh                # WASM build script for CI/Vercel
+└── .github/workflows/
+    └── rust.yml                       # Build, test, and deploy workflow
 ```
 
 ## Browser Requirements
