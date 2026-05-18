@@ -1965,6 +1965,7 @@ impl Renderer {
             .create_buffer()
             .ok_or_else(|| JsValue::from_str("Failed to create buffer"))?;
         gl.bind_buffer(ARRAY_BUFFER, Some(&buffer));
+        // Avoid JS memory copy.
         unsafe {
             let array = Float32Array::view(data);
             gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
@@ -2002,6 +2003,7 @@ impl Renderer {
 
         gl.bind_buffer(ARRAY_BUFFER, Some(&buffer));
 
+        // Avoid JS memory copy.
         unsafe {
             let array = Float32Array::view(&vertices);
             gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
@@ -2158,6 +2160,7 @@ impl Renderer {
                     .create_buffer()
                     .ok_or_else(|| JsValue::from_str("Failed to create vertex buffer"))?;
                 self.gl.bind_buffer(ARRAY_BUFFER, Some(&vertex_buffer));
+                // Avoid JS memory copy.
                 unsafe {
                     let array = Float32Array::view(&triangles.vertices);
                     self.gl
@@ -2317,6 +2320,7 @@ impl Renderer {
                         .create_buffer()
                         .ok_or_else(|| JsValue::from_str("Failed to create vertex buffer"))?;
                     self.gl.bind_buffer(ARRAY_BUFFER, Some(&vertex_buffer));
+                    // Avoid JS memory copy.
                     unsafe {
                         let array = Float32Array::view(&template.vertices);
                         self.gl.buffer_data_with_array_buffer_view(
@@ -3103,6 +3107,7 @@ impl Renderer {
             .create_buffer()
             .ok_or_else(|| JsValue::from_str("Failed to create vertex buffer"))?;
         gl.bind_buffer(ARRAY_BUFFER, Some(&buffer));
+        // Avoid JS memory copy.
         unsafe {
             let array = Float32Array::view(data);
             gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
@@ -3122,6 +3127,7 @@ impl Renderer {
             .create_buffer()
             .ok_or_else(|| JsValue::from_str("Failed to create path sector buffer"))?;
         gl.bind_buffer(ARRAY_BUFFER, Some(&buffer));
+        // Avoid JS memory copy.
         unsafe {
             let array = Float32Array::view(data);
             gl.buffer_data_with_array_buffer_view(ARRAY_BUFFER, &array, STATIC_DRAW);
