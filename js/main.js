@@ -35,6 +35,7 @@ import {
   worldToCanvasPoint as worldToCanvasCoordinate,
   zoomCameraAtCanvasPoint,
 } from "./viewport.js";
+import { ViewerOptionsStore } from "./viewer-options.js";
 
 const WASM_INPUT_RESERVE_MARGIN_BYTES = 1024 * 1024;
 const MAX_PARSE_WORKERS = 4;
@@ -48,6 +49,11 @@ const PARSE_MEMORY_ESTIMATE_MULTIPLIER = 16;
 const PARSE_MEMORY_HEADROOM_RATIO = 0.5;
 const RECYCLE_PARSE_WORKER_MEMORY_BYTES = 256 * BYTES_PER_MIB;
 const RECYCLE_PARSE_WORKER_GROWTH_BYTES = 128 * BYTES_PER_MIB;
+const ARC_TESSELLATION_QUALITY_LEVELS = {
+  low: 0,
+  normal: 1,
+  high: 2,
+};
 
 class ParseWorkerUnavailableError extends Error {
   constructor(message) {
@@ -250,7 +256,7 @@ class GerberParseWorkerPool {
     this.idleWorkers = [];
   }
 
-  parse(content, offset) {
+  parse(content, offset, options = {}) {
     if (this.isDisposed) {
       return Promise.reject(new Error("Parse worker pool has been disposed"));
     }
@@ -263,7 +269,7 @@ class GerberParseWorkerPool {
 
     const id = this.nextTaskId++;
     return new Promise((resolve, reject) => {
-      this.queue.push({ id, content, offset, resolve, reject });
+      this.queue.push({ id, content, offset, options, resolve, reject });
       this.pump();
     });
   }
@@ -278,6 +284,8 @@ class GerberParseWorkerPool {
           id: task.id,
           content: task.content,
           offset: task.offset,
+          preserveArcRegions: task.options.preserveArcRegions,
+          arcTessellationQuality: task.options.arcTessellationQuality,
         });
       } catch (error) {
         this.activeTasks.delete(worker);
@@ -498,6 +506,12 @@ export class GerberViewer {
     this.measurements = [];
     this.measurementUnit = "mm";
     this.layerFilterStore = new LayerFilterStore();
+    this.viewerOptionsStore = new ViewerOptionsStore();
+    this.preserveArcRegions = Boolean(
+      this.viewerOptionsStore.get("preserveArcRegions"),
+    );
+    this.arcTessellationQuality =
+      this.viewerOptionsStore.get("arcTessellationQuality") ?? "normal";
     this.drawerController = new DrawerController({
       drawer: this.drawer,
       resizeHandle: this.resizeHandle,
@@ -534,6 +548,7 @@ export class GerberViewer {
       getWasmModule: () => this.wasmModule,
       getWasmProcessor: () => this.wasmProcessor,
       getLayers: () => this.layers,
+      getParseOptions: () => this.getParseOptions(),
       getRenderState: (rect) => ({
         viewScaleX: this.getViewScaleX(),
         viewScaleY: this.getViewScaleY(),
@@ -561,6 +576,7 @@ export class GerberViewer {
     this.wasmModule.init_panic_hook();
 
     this.createWebGlProcessor();
+    this.normalizePersistedParserOptions();
 
     // Resize Canvas
     this.resizeCanvas();
@@ -577,6 +593,7 @@ export class GerberViewer {
     // Initial render
     this.updateEmptyStateHint();
     this.refreshIcons();
+    this.syncOptionControls();
     this.syncFilterInputs();
     this.updateUiState();
     this.updateRulerControls();
@@ -598,6 +615,89 @@ export class GerberViewer {
     this.gl = this.createWebGlContext();
     this.wasmProcessor = new this.wasmModule.GerberProcessor();
     this.wasmProcessor.init(this.gl);
+    this.configureWasmProcessorOptions(this.wasmProcessor);
+  }
+
+  createStagedWasmProcessor() {
+    if (!this.gl || this.isWebGlContextLost) {
+      throw new Error("WebGL renderer is not available");
+    }
+
+    const processor = new this.wasmModule.GerberProcessor();
+    try {
+      processor.init(this.gl);
+      this.configureWasmProcessorOptions(processor);
+      processor.resize();
+      return processor;
+    } catch (error) {
+      this.disposeWasmProcessorInstance(processor, "staged processor");
+      throw error;
+    }
+  }
+
+  configureWasmProcessorOptions(processor) {
+    if (typeof processor?.set_preserve_arc_regions === "function") {
+      processor.set_preserve_arc_regions(this.preserveArcRegions);
+    }
+
+    if (typeof processor?.set_arc_tessellation_quality === "function") {
+      processor.set_arc_tessellation_quality(this.getArcTessellationQualityLevel());
+    }
+  }
+
+  normalizePersistedParserOptions() {
+    let nextPreserveArcRegions = this.preserveArcRegions;
+    let nextArcTessellationQuality = this.arcTessellationQuality;
+
+    if (
+      !nextPreserveArcRegions &&
+      typeof this.wasmProcessor?.set_preserve_arc_regions !== "function"
+    ) {
+      nextPreserveArcRegions = true;
+    }
+
+    if (
+      nextArcTessellationQuality !== "normal" &&
+      typeof this.wasmProcessor?.set_arc_tessellation_quality !== "function"
+    ) {
+      nextArcTessellationQuality = "normal";
+    }
+
+    if (
+      nextPreserveArcRegions === this.preserveArcRegions &&
+      nextArcTessellationQuality === this.arcTessellationQuality
+    ) {
+      return;
+    }
+
+    this.preserveArcRegions = nextPreserveArcRegions;
+    this.arcTessellationQuality = nextArcTessellationQuality;
+    this.viewerOptionsStore.set("preserveArcRegions", this.preserveArcRegions);
+    this.viewerOptionsStore.set(
+      "arcTessellationQuality",
+      this.arcTessellationQuality,
+    );
+    this.configureWasmProcessorOptions(this.wasmProcessor);
+  }
+
+  ensureParserOptionsSupported({
+    preserveArcRegions = this.preserveArcRegions,
+    arcTessellationQuality = this.arcTessellationQuality,
+  } = {}) {
+    if (
+      !preserveArcRegions &&
+      typeof this.wasmProcessor?.set_preserve_arc_regions !== "function"
+    ) {
+      throw new Error("Region arc options require an updated WASM module");
+    }
+
+    if (
+      !preserveArcRegions &&
+      arcTessellationQuality !== "normal" &&
+      typeof this.wasmProcessor?.set_arc_tessellation_quality !== "function"
+    ) {
+      throw new Error("Arc tessellation quality requires an updated WASM module");
+    }
   }
 
   resizeCanvas({ allowProcessorResize = false, preserveViewState = null } = {}) {
@@ -758,6 +858,26 @@ export class GerberViewer {
       this.alphaValue.textContent = `${e.target.value}%`;
       this.updateGlobalAlpha(alpha);
     });
+
+    this.regionArcExactInput.addEventListener("change", () => {
+      if (this.regionArcExactInput.checked) {
+        void this.setRegionArcMode("exact");
+      }
+    });
+
+    this.regionArcApproximateInput.addEventListener("change", () => {
+      if (this.regionArcApproximateInput.checked) {
+        void this.setRegionArcMode("approximate");
+      }
+    });
+
+    for (const input of this.getArcQualityInputs()) {
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          void this.setArcTessellationQuality(input.value);
+        }
+      });
+    }
 
     this.topFilterInput.addEventListener("input", () => {
       this.updateLayerFilter("top", this.topFilterInput.value);
@@ -929,9 +1049,253 @@ export class GerberViewer {
     this.syncFilterInputs();
   }
 
+  getParseOptions() {
+    return {
+      preserveArcRegions: this.preserveArcRegions,
+      arcTessellationQuality: this.getArcTessellationQualityLevel(),
+    };
+  }
+
+  getArcTessellationQualityLevel() {
+    return ARC_TESSELLATION_QUALITY_LEVELS[this.arcTessellationQuality] ?? 1;
+  }
+
+  getArcQualityInputs() {
+    return [
+      this.arcQualityLowInput,
+      this.arcQualityNormalInput,
+      this.arcQualityHighInput,
+    ];
+  }
+
+  syncOptionControls() {
+    this.regionArcExactInput.checked = this.preserveArcRegions;
+    this.regionArcApproximateInput.checked = !this.preserveArcRegions;
+
+    for (const input of this.getArcQualityInputs()) {
+      input.checked = input.value === this.arcTessellationQuality;
+      input.disabled = this.preserveArcRegions || this.isRendererBusy();
+    }
+  }
+
   syncFilterInputs() {
     this.topFilterInput.value = this.layerFilterStore.get("top");
     this.bottomFilterInput.value = this.layerFilterStore.get("bottom");
+  }
+
+  async setRegionArcMode(mode) {
+    const nextPreserveArcRegions = mode !== "approximate";
+    if (nextPreserveArcRegions === this.preserveArcRegions) {
+      return;
+    }
+    if (this.isRendererBusy()) {
+      this.syncOptionControls();
+      return;
+    }
+
+    const previousPreserveArcRegions = this.preserveArcRegions;
+    try {
+      this.ensureParserOptionsSupported({
+        preserveArcRegions: nextPreserveArcRegions,
+        arcTessellationQuality: this.arcTessellationQuality,
+      });
+
+      this.preserveArcRegions = nextPreserveArcRegions;
+      this.syncOptionControls();
+
+      if (this.layers.length > 0) {
+        await this.rebuildLayersForParserOptions();
+      } else {
+        this.configureWasmProcessorOptions(this.wasmProcessor);
+      }
+      this.viewerOptionsStore.set(
+        "preserveArcRegions",
+        this.preserveArcRegions,
+      );
+      this.showNotification(
+        "Options updated",
+        "info",
+        NOTIFICATION_DURATION_MS,
+        (messageElement) => {
+          messageElement.textContent = "Region arc rendering mode was applied.";
+        },
+      );
+    } catch (error) {
+      this.preserveArcRegions = previousPreserveArcRegions;
+      this.syncOptionControls();
+      this.viewerOptionsStore.set(
+        "preserveArcRegions",
+        this.preserveArcRegions,
+      );
+      this.configureWasmProcessorOptions(this.wasmProcessor);
+      this.showError(`Failed to apply region arc option: ${getErrorMessage(error)}`);
+    } finally {
+      this.updateUiState();
+    }
+  }
+
+  async setArcTessellationQuality(quality) {
+    if (!(quality in ARC_TESSELLATION_QUALITY_LEVELS)) {
+      this.syncOptionControls();
+      return;
+    }
+    if (quality === this.arcTessellationQuality) {
+      return;
+    }
+    if (this.preserveArcRegions || this.isRendererBusy()) {
+      this.syncOptionControls();
+      return;
+    }
+
+    const previousQuality = this.arcTessellationQuality;
+    try {
+      this.ensureParserOptionsSupported({
+        preserveArcRegions: this.preserveArcRegions,
+        arcTessellationQuality: quality,
+      });
+
+      this.arcTessellationQuality = quality;
+      this.syncOptionControls();
+
+      if (this.layers.length > 0) {
+        await this.rebuildLayersForParserOptions();
+      } else {
+        this.configureWasmProcessorOptions(this.wasmProcessor);
+      }
+      this.viewerOptionsStore.set(
+        "arcTessellationQuality",
+        this.arcTessellationQuality,
+      );
+      this.showNotification(
+        "Options updated",
+        "info",
+        NOTIFICATION_DURATION_MS,
+        (messageElement) => {
+          messageElement.textContent = "Arc tessellation quality was applied.";
+        },
+      );
+    } catch (error) {
+      this.arcTessellationQuality = previousQuality;
+      this.syncOptionControls();
+      this.viewerOptionsStore.set(
+        "arcTessellationQuality",
+        this.arcTessellationQuality,
+      );
+      this.configureWasmProcessorOptions(this.wasmProcessor);
+      this.showError(`Failed to apply arc quality option: ${getErrorMessage(error)}`);
+    } finally {
+      this.updateUiState();
+    }
+  }
+
+  async rebuildLayersForParserOptions() {
+    const layerSnapshot = this.layers.map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      color: layer.color ? [...layer.color] : null,
+      sourceContent: layer.sourceContent,
+      offset: { ...normalizeLayerOffset(layer.offset) },
+    }));
+
+    if (
+      layerSnapshot.some((layer) => typeof layer.sourceContent !== "string")
+    ) {
+      throw new Error("Reload files before changing parser options.");
+    }
+
+    const viewState = this.captureCanvasViewState();
+    this.showLoadingModal({
+      title: "Applying options",
+      stage: "Parsing",
+      current: 0,
+      total: layerSnapshot.length,
+    });
+
+    try {
+      const parsedLayers = [];
+      for (const [index, layer] of layerSnapshot.entries()) {
+        this.updateLoadingModal({
+          title: "Applying options",
+          stage: "Parsing",
+          fileName: layer.name,
+          current: index,
+          total: layerSnapshot.length,
+        });
+
+        try {
+          const parsedLayer = await this.parseLayerContent(
+            layer.sourceContent,
+            layer.offset,
+            null,
+          );
+          parsedLayers.push({ ...layer, parsedLayer });
+        } catch (error) {
+          this.handleLayerLoadError(layer.name, error);
+          throw new Error(
+            `Failed to apply options because ${layer.name} could not be parsed: ${getErrorMessage(error)}`,
+          );
+        }
+      }
+
+      let stagedProcessor = null;
+      const stagedLayers = [];
+      const nextLayerDomId = this.nextLayerDomId;
+      const nextColorIndex = this.nextColorIndex;
+      try {
+        stagedProcessor = this.createStagedWasmProcessor();
+
+        for (const [index, layer] of parsedLayers.entries()) {
+          this.updateLoadingModal({
+            title: "Applying options",
+            stage: "Loading",
+            fileName: layer.name,
+            current: index,
+            total: parsedLayers.length,
+          });
+
+          const layerRecord = await this.createParsedLayerRecord(
+            layer.name,
+            layer.parsedLayer,
+            {
+              id: layer.id,
+              visible: layer.visible,
+              color: layer.color,
+              sourceContent: layer.sourceContent,
+              offset: layer.offset,
+              skipFatalRecovery: true,
+            },
+            stagedProcessor,
+          );
+          this.prepareLayerMetadata(layerRecord);
+          stagedLayers.push(layerRecord);
+
+          this.updateLoadingModal({
+            stage: "Loaded",
+            fileName: layer.name,
+            current: index + 1,
+            total: parsedLayers.length,
+          });
+        }
+
+        const previousProcessor = this.wasmProcessor;
+        this.wasmProcessor = stagedProcessor;
+        stagedProcessor = null;
+        this.layers = stagedLayers;
+        this.disposeWasmProcessorInstance(previousProcessor, "previous processor");
+      } catch (error) {
+        this.nextLayerDomId = nextLayerDomId;
+        this.nextColorIndex = nextColorIndex;
+        this.disposeWasmProcessorInstance(stagedProcessor, "staged processor");
+        throw error;
+      }
+
+      this.restoreCanvasViewState(viewState);
+      this.renderLayerList();
+      this.render();
+    } finally {
+      this.hideLoadingModal();
+    }
   }
 
   updateLayerFilter(kind, value) {
@@ -981,6 +1345,11 @@ export class GerberViewer {
     this.fileInput.disabled = rendererBusy;
     this.selectFilesBtn.disabled = rendererBusy;
     this.emptyUploadBtn.disabled = rendererBusy;
+    this.regionArcExactInput.disabled = rendererBusy;
+    this.regionArcApproximateInput.disabled = rendererBusy;
+    for (const input of this.getArcQualityInputs()) {
+      input.disabled = rendererBusy || this.preserveArcRegions;
+    }
 
     this.visibleLayerCount.textContent = `${visibleLayers} / ${totalLayers}`;
     this.diagnosticsCount.textContent = String(this.diagnostics.count);
@@ -1838,12 +2207,35 @@ export class GerberViewer {
 
   async parseLayerContent(content, offset, parseWorkerPool) {
     const normalizedOffset = normalizeLayerOffset(offset);
+    const parseOptions = this.getParseOptions();
 
     if (parseWorkerPool) {
-      return parseWorkerPool.parse(content, normalizedOffset);
+      return parseWorkerPool.parse(content, normalizedOffset, parseOptions);
     }
 
-    if (typeof this.wasmModule?.parse_gerber_layer !== "function") {
+    const parseWithOptions = this.wasmModule?.parse_gerber_layer_with_options;
+    if (typeof parseWithOptions === "function") {
+      if (
+        parseWithOptions.length < 5 &&
+        !parseOptions.preserveArcRegions &&
+        parseOptions.arcTessellationQuality !== 1
+      ) {
+        throw new Error("Arc tessellation quality requires an updated WASM module");
+      }
+      this.reserveWasmInputCapacity(content);
+      return parseWithOptions(
+        content,
+        normalizedOffset.x,
+        normalizedOffset.y,
+        parseOptions.preserveArcRegions,
+        parseOptions.arcTessellationQuality,
+      );
+    }
+
+    if (
+      !parseOptions.preserveArcRegions ||
+      typeof this.wasmModule?.parse_gerber_layer !== "function"
+    ) {
       throw new Error("Parallel parsing requires an updated WASM module");
     }
 
@@ -2147,12 +2539,16 @@ export class GerberViewer {
 
     const processor = this.wasmProcessor;
     this.wasmProcessor = null;
+    this.disposeWasmProcessorInstance(processor, "processor");
+  }
 
+  disposeWasmProcessorInstance(processor, label = "processor") {
+    if (!processor) return;
     if (typeof processor.free === "function") {
       try {
         processor.free();
       } catch (error) {
-        console.warn("[WASM] Failed to dispose processor after fatal error:", error);
+        console.warn(`[WASM] Failed to dispose ${label}:`, error);
       }
     }
   }
@@ -2252,12 +2648,20 @@ export class GerberViewer {
     this.notifications.hide();
   }
 
-  createLayerMetadata(name, layerId, options = {}) {
+  createLayerMetadata(
+    name,
+    layerId,
+    options = {},
+    processor = this.wasmProcessor,
+  ) {
     if (layerId === undefined || layerId === null) {
       throw new Error("Failed to get layer ID from WASM processor");
     }
+    if (!processor) {
+      throw new Error("WebGL renderer is not available");
+    }
 
-    const bounds = this.wasmProcessor.get_layer_boundary(layerId);
+    const bounds = processor.get_layer_boundary(layerId);
     return {
       id: options.id ?? null,
       layerId: layerId,
@@ -2314,6 +2718,7 @@ export class GerberViewer {
       }
 
       // add layer to WASM processor and get layer ID
+      this.ensureParserOptionsSupported();
       this.reserveWasmInputCapacity(content);
       const offset = normalizeLayerOffset(options.offset);
       if (
@@ -2356,24 +2761,29 @@ export class GerberViewer {
     return this.commitLayerMetadata(layer);
   }
 
-  async createParsedLayerRecord(name, parsedLayer, options = {}) {
+  async createParsedLayerRecord(
+    name,
+    parsedLayer,
+    options = {},
+    processor = this.wasmProcessor,
+  ) {
     try {
       if (!options.skipFatalRecovery) {
         await this.waitForWasmProcessorRecovery();
       }
-      if (!this.wasmProcessor || this.isWebGlContextLost) {
+      if (!processor || this.isWebGlContextLost) {
         throw new Error("WebGL renderer is not available");
       }
 
       let layerId;
-      if (typeof this.wasmProcessor.add_render_payload === "function") {
-        layerId = this.wasmProcessor.add_render_payload(parsedLayer);
-      } else if (typeof this.wasmProcessor.add_parsed_layer === "function") {
-        layerId = this.wasmProcessor.add_parsed_layer(parsedLayer);
+      if (typeof processor.add_render_payload === "function") {
+        layerId = processor.add_render_payload(parsedLayer);
+      } else if (typeof processor.add_parsed_layer === "function") {
+        layerId = processor.add_parsed_layer(parsedLayer);
       } else {
         throw new Error("Parsed layer rendering requires an updated WASM module");
       }
-      return this.createLayerMetadata(name, layerId, options);
+      return this.createLayerMetadata(name, layerId, options, processor);
     } catch (error) {
       if (isNoGeometryError(getErrorMessage(error))) {
         console.warn(`[Layer] Skipped layer ${name}:`, error);
