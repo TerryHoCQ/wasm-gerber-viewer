@@ -50,9 +50,6 @@ Open `http://localhost:8000` and upload Gerber files.
 ## npm Package
 
 - [wasm-gerber-renderer npm package](packages/gerber-renderer/README.md)
-- [wasm-gerber-renderer on npm](https://www.npmjs.com/package/wasm-gerber-renderer)
-- [@dsafdsaf132/wasm-gerber-renderer on GitHub Packages](https://github.com/dsafdsaf132/wasm-gerber-viewer/pkgs/npm/wasm-gerber-renderer)
-- [node-gles-webgl2](https://www.npmjs.com/package/node-gles-webgl2)
 
 ## Project Structure
 
