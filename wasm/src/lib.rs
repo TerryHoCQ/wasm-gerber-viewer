@@ -185,6 +185,22 @@ impl GerberProcessor {
         Ok("init_done".to_string())
     }
 
+    /// Initialize with WebGL 2.0 context and explicit framebuffer size.
+    ///
+    /// This is intended for headless contexts that do not expose an HTML canvas.
+    pub fn init_with_size(
+        &mut self,
+        gl: WebGl2RenderingContext,
+        width: u32,
+        height: u32,
+    ) -> Result<String, JsValue> {
+        let mut renderer = Renderer::new_headless(gl.clone(), width, height)?;
+        renderer.set_minimum_feature_pixels(self.minimum_feature_pixels);
+        self.renderer = Some(renderer);
+        self.gl = Some(gl);
+        Ok("init_done".to_string())
+    }
+
     /// Configure how regions containing arcs are parsed.
     ///
     /// When true, arc-containing regions are preserved for analytic WebGL rendering.
@@ -226,6 +242,26 @@ impl GerberProcessor {
             renderer.restore_context(gl.clone())?;
         } else {
             let mut renderer = Renderer::new(gl.clone())?;
+            renderer.set_minimum_feature_pixels(self.minimum_feature_pixels);
+            self.renderer = Some(renderer);
+        }
+
+        self.gl = Some(gl);
+        Ok("restore_done".to_string())
+    }
+
+    /// Recreate WebGL-owned resources with an explicit framebuffer size.
+    pub fn restore_context_with_size(
+        &mut self,
+        gl: WebGl2RenderingContext,
+        width: u32,
+        height: u32,
+    ) -> Result<String, JsValue> {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.set_framebuffer_size(width, height)?;
+            renderer.restore_context(gl.clone())?;
+        } else {
+            let mut renderer = Renderer::new_headless(gl.clone(), width, height)?;
             renderer.set_minimum_feature_pixels(self.minimum_feature_pixels);
             self.renderer = Some(renderer);
         }
@@ -345,7 +381,7 @@ impl GerberProcessor {
     ///
     /// # Arguments
     /// * `active_layer_ids` - Array of layer IDs to render (in order)
-    /// * `color_data` - Flat array of [r, g, b] for each active layer (NO alpha)
+    /// * `color_data` - Flat array of [r, g, b] or [r, g, b, a] for each active layer
     /// * `zoom_x` - Horizontal zoom factor
     /// * `zoom_y` - Vertical zoom factor
     /// * `offset_x` - Horizontal pan offset
@@ -376,6 +412,69 @@ impl GerberProcessor {
                 alpha,
             )?;
             Ok("render_done".to_string())
+        } else {
+            Err(JsValue::from_str(
+                "Renderer not initialized. Call init() first.",
+            ))
+        }
+    }
+
+    /// Render geometry to the canvas, optionally preserving existing canvas contents.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_with_clear(
+        &mut self,
+        active_layer_ids: &[u32],
+        color_data: &[f32],
+        zoom_x: f32,
+        zoom_y: f32,
+        offset_x: f32,
+        offset_y: f32,
+        alpha: f32,
+        clear_canvas: bool,
+    ) -> Result<String, JsValue> {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.render_with_clear(
+                active_layer_ids,
+                color_data,
+                zoom_x,
+                zoom_y,
+                offset_x,
+                offset_y,
+                alpha,
+                clear_canvas,
+            )?;
+            Ok("render_done".to_string())
+        } else {
+            Err(JsValue::from_str(
+                "Renderer not initialized. Call init() first.",
+            ))
+        }
+    }
+
+    /// Render into an offscreen framebuffer and return bottom-up RGBA pixels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_pixels_with_clear(
+        &mut self,
+        active_layer_ids: &[u32],
+        color_data: &[f32],
+        zoom_x: f32,
+        zoom_y: f32,
+        offset_x: f32,
+        offset_y: f32,
+        alpha: f32,
+        clear_canvas: bool,
+    ) -> Result<Vec<u8>, JsValue> {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.render_pixels_with_clear(
+                active_layer_ids,
+                color_data,
+                zoom_x,
+                zoom_y,
+                offset_x,
+                offset_y,
+                alpha,
+                clear_canvas,
+            )
         } else {
             Err(JsValue::from_str(
                 "Renderer not initialized. Call init() first.",
@@ -467,6 +566,18 @@ impl GerberProcessor {
     pub fn resize(&mut self) -> Result<String, JsValue> {
         if let Some(renderer) = &mut self.renderer {
             renderer.resize()?;
+            Ok("resize_done".to_string())
+        } else {
+            Err(JsValue::from_str(
+                "Renderer not initialized. Call init() and parse() first.",
+            ))
+        }
+    }
+
+    /// Resize framebuffers to explicit dimensions.
+    pub fn resize_to(&mut self, width: u32, height: u32) -> Result<String, JsValue> {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.resize_to(width, height)?;
             Ok("resize_done".to_string())
         } else {
             Err(JsValue::from_str(

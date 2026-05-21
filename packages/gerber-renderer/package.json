@@ -1,0 +1,59 @@
+{
+  "name": "wasm-gerber-renderer",
+  "version": "0.1.0",
+  "description": "Browser and Node WebGL2 Gerber renderer powered by wasm-gerber-viewer",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./node": {
+      "types": "./node.d.ts",
+      "default": "./node.js"
+    }
+  },
+  "bin": {
+    "gerber-renderer": "./bin/gerber-renderer.js"
+  },
+  "files": [
+    "bin",
+    "index.js",
+    "index.d.ts",
+    "node.js",
+    "node.d.ts",
+    "wasm/**/*"
+  ],
+  "scripts": {
+    "build:wasm": "wasm-pack build ../../wasm --target web --out-dir pkg --release",
+    "stage:wasm": "node scripts/stage-wasm.mjs",
+    "clean:wasm": "node scripts/clean-wasm.mjs",
+    "prepack": "npm run build:wasm && npm run stage:wasm",
+    "postpack": "npm run clean:wasm",
+    "check": "node --check index.js && node --check node.js && node --check bin/gerber-renderer.js && node --check scripts/stage-wasm.mjs && node --check scripts/clean-wasm.mjs"
+  },
+  "peerDependencies": {
+    "node-gles-webgl2": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "node-gles-webgl2": {
+      "optional": true
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dsafdsaf132/wasm-gerber-viewer.git",
+    "directory": "packages/gerber-renderer"
+  },
+  "keywords": [
+    "gerber",
+    "rs-274x",
+    "webgl",
+    "wasm",
+    "pcb"
+  ],
+  "sideEffects": false
+}
