@@ -81,6 +81,14 @@ Browser usage does not need `node-gles-webgl2`. Install it only when using
 npm install wasm-gerber-renderer node-gles-webgl2
 ```
 
+For CLI usage, install the packages globally and run `gerber-renderer`
+directly:
+
+```bash
+npm install -g wasm-gerber-renderer node-gles-webgl2
+gerber-renderer board.gbr -o board.png --width 1200 --height 800
+```
+
 ## Project Structure
 
 ```text

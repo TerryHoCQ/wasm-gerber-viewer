@@ -89,8 +89,16 @@ await renderGerberToPngFile(
 
 ## CLI
 
+Install the renderer and Node WebGL runtime globally:
+
 ```bash
-npx gerber-renderer board.gbr -o board.png --width 1200 --height 800 --background '#05070c'
+npm install -g wasm-gerber-renderer node-gles-webgl2
+```
+
+Then run the CLI directly:
+
+```bash
+gerber-renderer board.gbr -o board.png --width 1200 --height 800 --background '#05070c'
 ```
 
 Useful options:
