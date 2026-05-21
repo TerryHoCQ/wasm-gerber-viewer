@@ -1,4 +1,4 @@
-use crate::parser::{Aperture, FormatSpec, ParserState, Polarity, PolarityLayer};
+use crate::parser::{Aperture, FormatSpec, ParserState, Polarity, PolarityLayer, ZeroOmission};
 use crate::shape::PathRegions;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
@@ -1009,6 +1009,29 @@ pub fn convert_coordinate(
     format_spec: &FormatSpec,
     unit_multiplier: f32,
 ) -> f32 {
+    let normalized_coord;
+    let coord_str = if format_spec.zero_omission == ZeroOmission::Trailing {
+        let (sign, digits) = match coord_str.as_bytes().first().copied() {
+            Some(b'-') | Some(b'+') => coord_str.split_at(1),
+            _ => ("", coord_str),
+        };
+        let total_digits = match axis {
+            'x' => format_spec.x_total_digits,
+            'y' => format_spec.y_total_digits,
+            _ => 0,
+        }
+        .max(0) as usize;
+
+        if digits.len() < total_digits {
+            normalized_coord = format!("{sign}{digits:0<total_digits$}");
+            normalized_coord.as_str()
+        } else {
+            coord_str
+        }
+    } else {
+        coord_str
+    };
+
     if let Ok(val) = coord_str.parse::<i64>() {
         let divisor = match axis {
             'x' => format_spec.x_divisor,

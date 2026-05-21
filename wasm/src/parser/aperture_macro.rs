@@ -589,8 +589,9 @@ pub fn parse_primitive_statement(
 
             Some(7)
         }
-        20 => {
-            // Vector Line: 20,exposure,width,startX,startY,endX,endY[,rotation]
+        2 | 20 => {
+            // Vector Line: 2 is deprecated; 20 is the current equivalent.
+            // 2/20,exposure,width,startX,startY,endX,endY[,rotation]
             if parts.len() < 7 {
                 return None;
             }
@@ -681,6 +682,61 @@ pub fn parse_primitive_statement(
             primitives.push(tri2);
 
             Some(21)
+        }
+        22 => {
+            // Lower Left Line: deprecated rectangle primitive.
+            // 22,exposure,width,height,lowerLeftX,lowerLeftY[,rotation]
+            if parts.len() < 6 {
+                return None;
+            }
+            let exposure: f32 = evaluate_expression(parts[1], variables).ok()?;
+            let width: f32 = evaluate_expression(parts[2], variables).ok()?;
+            let height: f32 = evaluate_expression(parts[3], variables).ok()?;
+            let lower_left_x: f32 = evaluate_expression(parts[4], variables).ok()?;
+            let lower_left_y: f32 = evaluate_expression(parts[5], variables).ok()?;
+            let rotation: f32 = if parts.len() > 6 {
+                degrees_to_radians(evaluate_expression(parts[6], variables).ok()?)
+            } else {
+                0.0
+            };
+
+            let v1 = [lower_left_x, lower_left_y];
+            let v2 = [lower_left_x + width, lower_left_y];
+            let v3 = [lower_left_x + width, lower_left_y + height];
+            let v4 = [lower_left_x, lower_left_y + height];
+
+            let mut tri1 = Primitive::Triangle {
+                vertices: [v1, v2, v3],
+                exposure,
+                hole_x: 0.0,
+                hole_y: 0.0,
+                hole_radius: 0.0,
+            };
+            let mut tri2 = Primitive::Triangle {
+                vertices: [v1, v3, v4],
+                exposure,
+                hole_x: 0.0,
+                hole_y: 0.0,
+                hole_radius: 0.0,
+            };
+
+            if rotation != 0.0 {
+                if let Primitive::Triangle { vertices, .. } = &mut tri1 {
+                    for vertex in vertices.iter_mut() {
+                        rotate_point(vertex, rotation, 0.0, 0.0);
+                    }
+                }
+                if let Primitive::Triangle { vertices, .. } = &mut tri2 {
+                    for vertex in vertices.iter_mut() {
+                        rotate_point(vertex, rotation, 0.0, 0.0);
+                    }
+                }
+            }
+
+            primitives.push(tri1);
+            primitives.push(tri2);
+
+            Some(22)
         }
         _ => {
             // Unknown code

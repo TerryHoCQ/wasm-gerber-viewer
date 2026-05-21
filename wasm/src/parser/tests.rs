@@ -76,6 +76,95 @@ fn allocation_count_formatting_groups_digits_without_underflow() {
     assert_eq!(format_count(24_000_000), "24,000,000");
 }
 
+#[test]
+fn trailing_zero_omission_coordinates_are_right_padded() {
+    let layers = parse_gerber(
+        "\
+%FSTAX24Y24*%
+%MOMM*%
+%ADD10C,1.0*%
+D10*
+X01Y02D03*
+X-01Y-02D03*
+M02*",
+    )
+    .expect("trailing zero format should parse");
+
+    assert_eq!(layers.len(), 1);
+    let circles = &layers[0].circles;
+    assert_eq!(circles.x.len(), 2);
+    assert!(has_circle_at(circles, 1.0, 2.0, 0.5));
+    assert!(has_circle_at(circles, -1.0, -2.0, 0.5));
+}
+
+#[test]
+fn x2_attributes_are_ignored_for_image_rendering() {
+    let layers = parse_gerber(
+        "\
+%FSLAX24Y24*%
+%MOMM*%
+%TF.FileFunction,Copper,L1,Top*%
+%ADD10C,1.0*%
+%TA.AperFunction,ComponentPad*%
+D10*
+%TO.N,GND*%
+X010000Y020000D03*
+%TD*%
+M02*",
+    )
+    .expect("attributes should not affect image rendering");
+
+    assert_eq!(layers.len(), 1);
+    assert_eq!(layers[0].circles.x.len(), 1);
+    assert!(has_circle_at(&layers[0].circles, 1.0, 2.0, 0.5));
+}
+
+#[test]
+fn deprecated_macro_vector_line_primitive_2_aliases_primitive_20() {
+    let layers = parse_gerber(
+        "\
+%FSLAX26Y26*%
+%MOMM*%
+%AMVL2*
+2,1,0.5,-1,0,1,0,0*%
+%ADD10VL2*%
+D10*
+X000000Y000000D03*
+M02*",
+    )
+    .expect("macro primitive 2 should parse as vector line");
+
+    assert_eq!(layers.len(), 1);
+    let (min_x, max_x, min_y, max_y) = layer_triangle_bounds(&layers[0]);
+    assert_approx_eq(min_x, -1.0);
+    assert_approx_eq(max_x, 1.0);
+    assert_approx_eq(min_y, -0.25);
+    assert_approx_eq(max_y, 0.25);
+}
+
+#[test]
+fn deprecated_macro_lower_left_line_primitive_22_renders_rectangle() {
+    let layers = parse_gerber(
+        "\
+%FSLAX26Y26*%
+%MOMM*%
+%AMLL22*
+22,1,2,1,-1,-0.5,0*%
+%ADD10LL22*%
+D10*
+X000000Y000000D03*
+M02*",
+    )
+    .expect("macro primitive 22 should parse as lower-left rectangle");
+
+    assert_eq!(layers.len(), 1);
+    let (min_x, max_x, min_y, max_y) = layer_triangle_bounds(&layers[0]);
+    assert_approx_eq(min_x, -1.0);
+    assert_approx_eq(max_x, 1.0);
+    assert_approx_eq(min_y, -0.5);
+    assert_approx_eq(max_y, 0.5);
+}
+
 fn scaled(value: f32) -> i32 {
     (value * 10_000.0).round() as i32
 }

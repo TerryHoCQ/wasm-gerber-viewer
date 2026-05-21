@@ -5,7 +5,7 @@ mod state;
 
 // Export only what's needed externally
 pub use aperture::Aperture;
-pub use state::{FormatSpec, ParserState, Polarity};
+pub use state::{FormatSpec, ParserState, Polarity, ZeroOmission};
 
 // Internal use only
 use aperture::parse_aperture;
@@ -1079,6 +1079,12 @@ fn parse_command(
     } else if line.starts_with("%LS") {
         // Layer scaling: %LS0.8*
         parse_ls(&line, state);
+    } else if line.starts_with("%TF")
+        || line.starts_with("%TA")
+        || line.starts_with("%TO")
+        || line.starts_with("%TD")
+    {
+        // X2/X3 attributes do not affect image rendering.
     } else {
         // Unknown or unsupported command
     }

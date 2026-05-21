@@ -11,12 +11,19 @@ pub enum Polarity {
 }
 
 /// Format specification for coordinate conversion
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ZeroOmission {
+    Leading,
+    Trailing,
+}
+
 #[derive(Clone, Debug)]
 pub struct FormatSpec {
     pub x_integer_digits: u32,
     pub x_decimal_digits: u32,
     pub y_integer_digits: u32,
     pub y_decimal_digits: u32,
+    pub zero_omission: ZeroOmission,
     // Cached calculation values - performance optimization
     pub x_divisor: f64,      // 10^(x_decimal_digits)
     pub y_divisor: f64,      // 10^(y_decimal_digits)
@@ -31,6 +38,7 @@ impl Default for FormatSpec {
             x_decimal_digits: 4,
             y_integer_digits: 2,
             y_decimal_digits: 4,
+            zero_omission: ZeroOmission::Leading,
             x_divisor: 10000.0, // 10^4
             y_divisor: 10000.0, // 10^4
             x_total_digits: 6,  // 2 + 4
@@ -122,8 +130,12 @@ pub fn parse_format_spec(line: &str, state: &mut ParserState) {
         return;
     }
 
-    // L/T: Leading (L) or Trailing (T) zeros
-    let _leading_type = chars[pos];
+    // L/T: Leading (L) or Trailing (T) zero omission
+    state.format_spec.zero_omission = if chars[pos] == 'T' {
+        ZeroOmission::Trailing
+    } else {
+        ZeroOmission::Leading
+    };
     pos += 1;
 
     if pos >= chars.len() {
