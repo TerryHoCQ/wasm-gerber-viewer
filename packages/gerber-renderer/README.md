@@ -35,10 +35,7 @@ For Node.js/headless rendering, also install a WebGL2-capable GLES package:
 npm install wasm-gerber-renderer node-gles-webgl2
 ```
 
-`node-gles-webgl2` is an optional native runtime for Node.js rendering, not a
-browser dependency. It creates a headless WebGL2/OpenGL ES 3 context backed by
-ANGLE so the renderer can produce PNG output without a browser. You can also
-pass a compatible custom GLES module through `rendererOptions.glesModule`.
+Browser usage does not need `node-gles-webgl2`.
 
 ## Browser Usage
 
@@ -69,8 +66,7 @@ await renderer.withFrame({ width: 1200, height: 800, padding: 24 }, async () => 
 
 ## Node.js Usage
 
-Install `node-gles-webgl2` before using the Node.js entrypoint unless you pass a
-custom GLES module.
+Install `node-gles-webgl2` before using the Node.js entrypoint.
 
 ```js
 import { renderGerberToPngFile } from "wasm-gerber-renderer/node";
@@ -114,58 +110,25 @@ gerber-renderer top.gbr bottom.gbr \
   --minimum-feature-pixels 1
 ```
 
-Option defaults:
+CLI options:
 
-```text
---width <px>                     Output width. Default: 1200
---height <px>                    Output height. Default: 800
---padding <px>                   Fit padding in pixels. Default: 0
---background <color>             CSS color for the background. Default: transparent
---alpha <0-1>                    Global layer alpha. Default: 0.7
---minimum-feature-pixels <px>    Minimum line/arc display width. Default: 1
---approx-region-arcs             Approximate region arcs before rendering. Default: false
---arc-quality <0|1|2>            Arc approximation quality. Default: 1
---no-fit                         Disable fit-to-view and use identity view. Default: fit enabled
-```
+| Option | Default | Description |
+| --- | --- | --- |
+| `<input.gbr...>` | Required | One or more Gerber input files. Multiple files are rendered as separate layers in argument order. |
+| `-o, --output <path>` | Required | PNG output path. Parent directories must already exist. |
+| `--width <px>` | `1200` | Output canvas width in pixels. Must be a positive integer. |
+| `--height <px>` | `800` | Output canvas height in pixels. Must be a positive integer. |
+| `--padding <px>` | `0` | Extra screen-space padding used by fit-to-view. |
+| `--background <color>` | Transparent | CSS background color, such as `#05070c`, `black`, or `rgba(0,0,0,0)`. |
+| `--alpha <0-1>` | `0.7` | Global layer opacity applied while rendering. |
+| `--minimum-feature-pixels <px>` | `1` | Minimum rendered line/arc width in screen pixels, useful for keeping very thin features visible. |
+| `--approx-region-arcs` | Disabled | Converts region arcs to line segments before rendering instead of using the exact arc-region renderer. |
+| `--arc-quality <0\|1\|2>` | `1` | Arc tessellation quality: `0` low, `1` normal, `2` high. Mainly relevant with `--approx-region-arcs`. |
+| `--no-fit` | Disabled | Disables fit-to-view and renders with the renderer's identity view. |
+| `-h, --help` | - | Prints CLI usage and exits. |
 
 `--arc-quality` is used only with `--approx-region-arcs`. Quality values are
 `0` for low, `1` for normal, and `2` for high.
-
-## Custom WASM or GLES Modules
-
-The default package includes the WASM renderer under `wasm/`.
-
-Advanced callers can override the WASM module or binary:
-
-```js
-import wasmModule from "./custom/wasm_gerber_processor.js";
-import { createNodeGerberRenderer } from "wasm-gerber-renderer/node";
-
-const renderer = await createNodeGerberRenderer({
-  wasmModule,
-  wasmModuleUrl: new URL("./custom/wasm_gerber_processor.js", import.meta.url),
-});
-```
-
-For Node.js, a custom GLES module can be supplied:
-
-```js
-await createNodeGerberRenderer({
-  glesModule: customGlesModule,
-});
-```
-
-## Publish Checklist
-
-From `packages/gerber-renderer`:
-
-```bash
-npm run check
-npm run verify:publish
-npm publish
-```
-
-`prepack` builds the Rust/WASM package and stages the generated files into this package before packing. `postpack` removes the staged WASM directory from the working tree.
 
 ## License
 
