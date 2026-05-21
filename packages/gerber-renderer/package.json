@@ -36,7 +36,7 @@
     "wasm/**/*"
   ],
   "scripts": {
-    "build:wasm": "wasm-pack build ../../wasm --target web --out-dir pkg --release",
+    "build:wasm": "../../scripts/vercel-build.sh",
     "stage:wasm": "node scripts/stage-wasm.mjs",
     "clean:wasm": "node scripts/clean-wasm.mjs",
     "prepack": "npm run build:wasm && npm run stage:wasm",
