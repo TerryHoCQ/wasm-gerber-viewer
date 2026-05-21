@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write
 
 concurrency:
   group: npm-publish-${{ github.event.release.tag_name || inputs.tag }}
@@ -44,8 +45,27 @@ jobs:
             exit 1
           fi
 
-      - name: Publish package to npm
+      - name: Publish package to npmjs
         working-directory: packages/gerber-renderer
         env:
           NODE_AUTH_TOKEN: ${{ secrets.npm_token || secrets.NPM_TOKEN }}
         run: npm publish --provenance
+
+      - name: Setup Node.js for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@dsafdsaf132"
+
+      - name: Prepare GitHub Packages metadata
+        working-directory: packages/gerber-renderer
+        run: |
+          npm pkg set name="@dsafdsaf132/wasm-gerber-renderer"
+          npm pkg set publishConfig.registry="https://npm.pkg.github.com"
+
+      - name: Publish package to GitHub Packages
+        working-directory: packages/gerber-renderer
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish

@@ -15,6 +15,17 @@ The package provides:
 npm install wasm-gerber-renderer
 ```
 
+The same package is also published to GitHub Packages as
+`@dsafdsaf132/wasm-gerber-renderer`:
+
+```bash
+npm config set @dsafdsaf132:registry https://npm.pkg.github.com
+npm install @dsafdsaf132/wasm-gerber-renderer
+```
+
+When installing from GitHub Packages, replace import specifiers such as
+`wasm-gerber-renderer` with `@dsafdsaf132/wasm-gerber-renderer`.
+
 For Node.js/headless rendering, also install a WebGL2-capable GLES package:
 
 ```bash
