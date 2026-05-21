@@ -1080,6 +1080,30 @@ M02*";
 }
 
 #[test]
+fn transformed_triangle_aperture_flashes_use_template_instances() {
+    let data = "\
+%FSLAX26Y26*%
+%MOMM*%
+%ADD10R,1.0X0.5*%
+%LR45.0*%
+D10*
+X000000Y000000D03*
+X2000000Y000000D03*
+M02*";
+
+    let layers = parse_gerber(data).expect("rotated rectangle flashes should parse");
+
+    assert_eq!(layers.len(), 1);
+    assert!(layers[0].triangles.vertices.is_empty());
+    assert_eq!(layers[0].triangle_templates.len(), 1);
+    assert_eq!(layers[0].triangle_templates[0].vertices.len(), 12);
+    assert_eq!(layers[0].triangle_templates[0].instance_x.len(), 2);
+    assert_eq!(layers[0].triangle_templates[0].instance_y.len(), 2);
+    assert_approx_eq(layers[0].triangle_templates[0].instance_x[0], 0.0);
+    assert_approx_eq(layers[0].triangle_templates[0].instance_x[1], 2.0);
+}
+
+#[test]
 fn aperture_block_flashes_stored_graphics_at_operation_coordinate() {
     let data = "\
 %FSLAX24Y24*%
@@ -1400,10 +1424,8 @@ X1000000Y0000000D01*
 M02*",
     )
     .expect("zero-width solid circle D01 should parse");
-    let layer = &layers[0];
 
-    assert!(layer.lines.start_x.is_empty());
-    assert!(layer.triangles.vertices.is_empty());
+    assert!(layers.is_empty());
 }
 
 #[test]
@@ -1442,6 +1464,8 @@ M02*",
     .expect("zero-length rectangle D01 should parse");
 
     assert_eq!(layers.len(), 1);
+    assert!(layers[0].triangles.vertices.is_empty());
+    assert_eq!(layers[0].triangle_templates.len(), 1);
     let vertices = collect_triangle_vertices(&layers[0]);
     assert_eq!(vertices.len(), 12);
     let (min_x, max_x, min_y, max_y) = triangle_bounds(&vertices);
@@ -1449,6 +1473,67 @@ M02*",
     assert_approx_eq(max_x, 0.5);
     assert_approx_eq(min_y, -0.5);
     assert_approx_eq(max_y, 0.5);
+}
+
+#[test]
+fn transformed_zero_length_non_solid_draw_uses_template_instance() {
+    let layers = parse_gerber(
+        "\
+%FSLAX26Y26*%
+%MOMM*%
+%ADD10R,1.0X1.0*%
+%LR45.0*%
+D10*
+X0000000Y0000000D02*
+X0000000Y0000000D01*
+M02*",
+    )
+    .expect("rotated zero-length rectangle D01 should parse");
+
+    assert_eq!(layers.len(), 1);
+    assert!(layers[0].triangles.vertices.is_empty());
+    assert_eq!(layers[0].triangle_templates.len(), 1);
+    let vertices = collect_triangle_vertices(&layers[0]);
+    assert_eq!(vertices.len(), 12);
+    let (min_x, max_x, min_y, max_y) = triangle_bounds(&vertices);
+    let expected_extent = std::f32::consts::FRAC_1_SQRT_2;
+    assert_approx_eq(min_x, -expected_extent);
+    assert_approx_eq(max_x, expected_extent);
+    assert_approx_eq(min_y, -expected_extent);
+    assert_approx_eq(max_y, expected_extent);
+}
+
+#[test]
+fn degenerate_triangle_apertures_do_not_create_template_instances() {
+    let layers = parse_gerber(
+        "\
+%FSLAX26Y26*%
+%MOMM*%
+%ADD10R,0.0X1.0*%
+D10*
+X0000000Y0000000D03*
+M02*",
+    )
+    .expect("degenerate rectangle aperture should parse");
+
+    assert!(layers.is_empty());
+}
+
+#[test]
+fn invalid_thermal_macro_is_filtered_before_render_buffers() {
+    let layers = parse_gerber(
+        "\
+%FSLAX26Y26*%
+%MOMM*%
+%AMBADTHERM*7,0,0,1.0,-0.2,0.1,0*%
+%ADD10BADTHERM*%
+D10*
+X0000000Y0000000D03*
+M02*",
+    )
+    .expect("invalid thermal macro should parse");
+
+    assert!(layers.is_empty());
 }
 
 #[test]

@@ -1078,16 +1078,15 @@ fn flash_aperture_no_sr(
         try_reserve_primitives(primitives, result_primitives.len(), "aperture flash")?;
         primitives.extend(result_primitives);
     } else {
-        if let Some(template) = &aperture.triangle_template {
-            if layer_scale == 1.0 && !mirror_x && !mirror_y && layer_rotation == 0.0 {
-                try_reserve_primitives(primitives, 1, "aperture triangle template flash")?;
-                primitives.push(Primitive::TriangleTemplateFlash {
-                    template: Rc::clone(template),
-                    x,
-                    y,
-                });
-                return Ok(());
-            }
+        if let Some(template) = aperture.triangle_template_for_transform(
+            layer_scale,
+            mirror_x,
+            mirror_y,
+            layer_rotation,
+        ) {
+            try_reserve_primitives(primitives, 1, "aperture triangle template flash")?;
+            primitives.push(Primitive::TriangleTemplateFlash { template, x, y });
+            return Ok(());
         }
 
         // Direct primitive cloning
@@ -1288,6 +1287,30 @@ pub fn flash_aperture(
     if let Some(aperture) = apertures.get(&state.current_aperture) {
         if let Some(block_layers) = aperture.block_layers.as_ref() {
             flash_block_aperture(block_layers, state, primitives, polarity_layers, x, y)?;
+            return Ok(());
+        }
+
+        if let Some(template) = aperture.triangle_template_for_transform(
+            state.layer_scale,
+            state.mirror_x,
+            state.mirror_y,
+            state.layer_rotation,
+        ) {
+            let repeat_count = checked_primitive_count(
+                state.sr_x as usize,
+                state.sr_y as usize,
+                "aperture triangle template flash step repeat",
+            )?;
+            try_reserve_primitives(primitives, repeat_count, "aperture triangle template flash")?;
+            for sy in 0..state.sr_y {
+                for sx in 0..state.sr_x {
+                    primitives.push(Primitive::TriangleTemplateFlash {
+                        template: Rc::clone(&template),
+                        x: x + sx as f32 * state.sr_i,
+                        y: y + sy as f32 * state.sr_j,
+                    });
+                }
+            }
             return Ok(());
         }
 
