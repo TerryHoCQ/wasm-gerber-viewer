@@ -49,7 +49,7 @@ jobs:
         working-directory: packages/gerber-renderer
         env:
           NODE_AUTH_TOKEN: ${{ secrets.npm_token || secrets.NPM_TOKEN }}
-        run: npm publish --provenance
+        run: npm publish --provenance --access public
 
       - name: Setup Node.js for GitHub Packages
         uses: actions/setup-node@v4
