@@ -14,8 +14,8 @@ G04 Glyph order: A-Z then 0-9. Search for GLYPH A D100 or FONT TEST ROW markers*
 G04 EDITING NOTES END*
 G04 Glyph aperture block definitions D100-D135*
 G04 Glyph source: OSIFONT outline strokes approximated with G01 lines and G02/G03 arcs*
-G04 Glyph stroke aperture D90: C 0.150 mm*
-%ADD90C,0.150*%
+G04 Glyph stroke aperture D90: C 0.300 mm*
+%ADD90C,0.300*%
 G04 GLYPH A D100*
 %ABD100*%
 D90*
