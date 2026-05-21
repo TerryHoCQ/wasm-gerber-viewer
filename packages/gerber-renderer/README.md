@@ -67,17 +67,121 @@ await renderer.withFrame({ width: 1200, height: 800, padding: 24 }, async () => 
 });
 ```
 
-Browser APIs:
+## Type Reference
+
+Color arrays use normalized channel values in the `0` to `1` range.
+
+```ts
+type RGBColor = [number, number, number];
+type RGBAColor = [number, number, number, number];
+
+type GerberSource =
+  | File
+  | string
+  | Blob
+  | ArrayBuffer
+  | Uint8Array;
+
+type GerberLayer =
+  | GerberSource
+  | {
+      source: GerberSource;
+      name?: string;
+      color?: RGBColor;
+      alpha?: number;
+      offsetX?: number;
+      offsetY?: number;
+    };
+```
+
+In browser APIs, a `string` source is Gerber file content. `File`, `Blob`,
+`ArrayBuffer`, and `Uint8Array` sources are decoded as text. Layer config
+objects let you attach per-layer options directly to a source.
+
+Node.js accepts the same content sources, plus file paths through `URL`,
+`{ path }`, or `{ path, ...options }` layer objects:
+
+```ts
+type GerberNodeSource =
+  | File
+  | string
+  | Blob
+  | ArrayBuffer
+  | Uint8Array
+  | URL
+  | { path: string };
+
+type GerberNodeLayer =
+  | GerberNodeSource
+  | {
+      source: GerberNodeSource;
+      name?: string;
+      color?: RGBColor | string;
+      alpha?: number;
+      offsetX?: number;
+      offsetY?: number;
+    }
+  | {
+      path: string;
+      name?: string;
+      color?: RGBColor | string;
+      alpha?: number;
+      offsetX?: number;
+      offsetY?: number;
+    };
+```
+
+In Node.js APIs, a plain `string` is still Gerber content. Use
+`{ path: "board.gbr" }`, `fileLayer("board.gbr")`, or a `file:` URL when
+rendering from the filesystem.
+
+## Browser API
 
 | API | Description |
 | --- | --- |
-| `renderGerberToCanvas(canvas, layers, frameOptions)` | One-shot render into an existing WebGL2-capable canvas. Use this for simple viewer or preview cases. |
-| `renderGerberToPng(canvas, layers, frameOptions, exportOptions)` | Renders through a browser canvas and returns a PNG `Blob`. |
+| `renderGerberToCanvas(canvas, layers, frameOptions)` | One-shot render into an existing WebGL2-capable canvas. `layers` may be a single `GerberLayer`, an array of layers, or a `FileList`. |
+| `renderGerberToPng(canvas, layers, frameOptions, exportOptions)` | Renders through a browser canvas and returns a PNG `Blob`. `layers` accepts the same values as `renderGerberToCanvas`. |
 | `createGerberRenderer(canvas, rendererOptions)` | Creates a reusable renderer for rendering multiple frames or layers without reloading the WASM module every time. |
-| `renderer.withFrame(frameOptions, callback)` | Starts a render frame, applies canvas/view options, runs the callback, and presents the rendered layers. |
-| `renderer.renderLayer(layer, layerOptions)` | Adds one Gerber layer to the active frame. Layer options include `color`, `alpha`, `offsetX`, and `offsetY`. |
+| `renderer.withFrame(frameOptions, callback)` | Starts a render frame, applies canvas/view options, runs the sync or async callback, and presents the rendered layers after the callback resolves. |
+| `renderer.renderLayer(layer, layerOptions)` | Adds one `GerberLayer` to the active frame and resolves to the numeric layer ID. Must be called inside `withFrame()`. |
 | `renderer.exportPng(exportOptions)` | Exports the last rendered browser frame as a PNG `Blob`. |
 | `renderer.dispose()` | Releases the WebGL context when the renderer is no longer needed. |
+
+## Node.js Usage
+
+Install `node-gles-webgl2` before using the Node.js entrypoint.
+
+```js
+import { fileLayer, renderGerberToPngFile } from "wasm-gerber-renderer/node";
+
+await renderGerberToPngFile(
+  "board.png",
+  [
+    fileLayer("top.gbr", { name: "Top copper", color: "#ff3b30" }),
+    fileLayer("bottom.gbr", { name: "Bottom copper", color: "#007aff" }),
+  ],
+  {
+    width: 1200,
+    height: 800,
+    background: "#05070c",
+    padding: 24,
+  },
+);
+```
+
+## Node.js API
+
+| API | Description |
+| --- | --- |
+| `createNodeGerberRenderer(rendererOptions)` | Creates a reusable headless renderer backed by a native WebGL2/GLES context. |
+| `renderGerberToPngBuffer(layers, frameOptions, exportOptions, rendererOptions)` | One-shot render that resolves to PNG bytes as a `Uint8Array`. `layers` may be a single `GerberNodeLayer` or an array. |
+| `renderGerberToPngFile(outputPath, layers, frameOptions, exportOptions, rendererOptions)` | One-shot render that writes PNG bytes to `outputPath`. Parent directories must already exist. |
+| `fileLayer(path, options)` | Creates a path-backed Node layer config. `options` accepts `name`, `color`, `alpha`, `offsetX`, and `offsetY`. |
+| `packageRoot()` | Returns the installed package directory path. |
+| `renderer.withFrame(frameOptions, callback)` | Starts a headless render frame, runs the sync or async callback, and stores the rendered pixels after the callback resolves. |
+| `renderer.renderLayer(layer, layerOptions)` | Adds one `GerberNodeLayer` to the active frame and resolves to the numeric layer ID. Must be called inside `withFrame()`. |
+| `renderer.exportPng(exportOptions)` | Exports the last rendered Node frame as PNG bytes. |
+| `renderer.dispose()` | Releases the GLES context when the renderer is no longer needed. |
 
 ## API Options
 
@@ -88,7 +192,7 @@ Browser APIs:
 | `width` | Browser canvas width, Node: `1200` | Output width in pixels. |
 | `height` | Browser canvas height, Node: `800` | Output height in pixels. |
 | `clear` | `true` | Clears the frame before rendering. Node always renders to a fresh buffer and does not support `false`. |
-| `background` | `null` | Background color. Use `null` for transparent output, a CSS color string, or `[r, g, b, a]`. |
+| `background` | `null` | Background color. Use `null` for transparent output, a browser CSS color string, a Node hex/`rgb()`/`rgba()` string, or `[r, g, b, a]`. |
 | `fit` | `true` | Fits all loaded layer bounds into the output frame. |
 | `padding` | `0` | Pixel padding applied when `fit` is enabled. |
 | `view` | `null` | Manual view override: `{ zoomX, zoomY, offsetX, offsetY }`. When provided, it takes precedence over `fit`. |
@@ -102,7 +206,7 @@ Browser APIs:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `color` | Automatic color cycle | Layer color. Browser accepts `[r, g, b]`; Node accepts `[r, g, b]` or a CSS color string. |
+| `color` | Automatic color cycle | Layer color. Browser accepts `[r, g, b]`; Node accepts `[r, g, b]`, hex strings, or `rgb()`/`rgba()` strings. |
 | `alpha` | `1` | Per-layer opacity before `globalAlpha` is applied. |
 | `offsetX` | `0` | X offset applied while loading the layer geometry. |
 | `offsetY` | `0` | Y offset applied while loading the layer geometry. |
@@ -112,42 +216,23 @@ Browser APIs:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `type` | `image/png` | Browser export MIME type. Node always writes PNG. |
-| `quality` | Browser default | Browser encoder quality passed to `canvas.toBlob`. |
+| `type` | `image/png` | Browser-only export MIME type. Node always writes PNG. |
+| `quality` | Browser default | Browser-only encoder quality passed to `canvas.toBlob`. |
 | `background` | Last frame background | Export background override. Use `null` to keep transparency. |
 
 `rendererOptions` control renderer creation:
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `wasmModule` | Bundled module | Preloaded WASM JS module. Most users do not need this. |
-| `wasmModuleUrl` | Bundled module URL | URL used to import the WASM JS module. |
-| `wasmBinaryUrl` | Bundled `.wasm` URL | Node-only binary URL used when initializing the WASM module. |
-| `wasmInitInput` | `undefined` | Custom value passed to the WASM module initializer. |
-| `contextAttributes` | Package defaults | WebGL context attributes. |
-| `releaseContext` | `true` | Releases the WebGL context on `dispose()` when supported. |
-| `glesModule` | Auto-loaded in Node | Node-only GLES module object. Normal CLI usage uses `node-gles-webgl2`. |
-| `glesModuleName` | `node-gles-webgl2` fallback list | Node-only module name to load for the GLES runtime. |
-| `gl` | Auto-created in Node | Node-only pre-created WebGL2 context. |
-
-## Node.js Usage
-
-Install `node-gles-webgl2` before using the Node.js entrypoint.
-
-```js
-import { renderGerberToPngFile } from "wasm-gerber-renderer/node";
-
-await renderGerberToPngFile(
-  "board.png",
-  ["top.gbr", "bottom.gbr"],
-  {
-    width: 1200,
-    height: 800,
-    background: "#05070c",
-    padding: 24,
-  },
-);
-```
+| Option | Applies to | Default | Description |
+| --- | --- | --- | --- |
+| `wasmModule` | Browser, Node | Bundled module | Preloaded WASM JS module. Most users do not need this. |
+| `wasmModuleUrl` | Browser, Node | Bundled module URL | URL used to import the WASM JS module. |
+| `wasmBinaryUrl` | Node | Bundled `.wasm` URL | Binary URL used when initializing the WASM module in Node.js. |
+| `wasmInitInput` | Browser, Node | `undefined` | Custom value passed to the WASM module initializer. |
+| `contextAttributes` | Browser, Node | Package defaults | WebGL context attributes. |
+| `releaseContext` | Browser, Node | `true` | Releases the WebGL/GLES context on `dispose()` when supported. |
+| `glesModule` | Node | Auto-loaded | Custom GLES module object. Normal CLI usage uses `node-gles-webgl2`. |
+| `glesModuleName` | Node | `node-gles-webgl2` fallback list | Module name to load for the GLES runtime. |
+| `gl` | Node | Auto-created | Pre-created WebGL2-compatible context. |
 
 ## CLI
 
@@ -179,7 +264,7 @@ CLI options:
 | `--width <px>` | `1200` | Output canvas width in pixels. Must be a positive integer. |
 | `--height <px>` | `800` | Output canvas height in pixels. Must be a positive integer. |
 | `--padding <px>` | `0` | Extra screen-space padding used by fit-to-view. |
-| `--background <color>` | Transparent | CSS background color, such as `#05070c`, `black`, or `rgba(0,0,0,0)`. |
+| `--background <color>` | Transparent | Hex or `rgb()`/`rgba()` background color, such as `#05070c` or `rgba(0,0,0,0)`. |
 | `--alpha <0-1>` | `0.7` | Global layer opacity applied while rendering. |
 | `--minimum-feature-pixels <px>` | `1` | Minimum rendered line/arc width in screen pixels, useful for keeping very thin features visible. |
 | `--approx-region-arcs` | Disabled | Converts region arcs to line segments before rendering instead of using the exact arc-region renderer. |
