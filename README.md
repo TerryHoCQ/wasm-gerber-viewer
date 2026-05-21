@@ -47,6 +47,40 @@ python3 -m http.server 8000
 
 Open `http://localhost:8000` and upload Gerber files.
 
+## npm Package
+
+The renderer is published as `wasm-gerber-renderer` for applications that need
+Gerber rendering without using the hosted viewer UI.
+
+```bash
+npm install wasm-gerber-renderer
+```
+
+It provides browser canvas rendering, Node.js PNG rendering, and the
+`gerber-renderer` CLI. The package bundles the generated WASM renderer during
+publish, so consumers do not need Rust or `wasm-pack`.
+
+The same package is also available from GitHub Packages under the scoped name
+`@dsafdsaf132/wasm-gerber-renderer`:
+
+```bash
+npm config set @dsafdsaf132:registry https://npm.pkg.github.com
+npm install @dsafdsaf132/wasm-gerber-renderer
+```
+
+### node-gles-webgl2
+
+`node-gles-webgl2` is an optional native runtime for Node.js rendering. It
+creates a headless WebGL2/OpenGL ES 3 context backed by ANGLE, which lets the
+same WASM/WebGL renderer produce PNG output in Node.js and in the CLI.
+
+Browser usage does not need `node-gles-webgl2`. Install it only when using
+`wasm-gerber-renderer/node` or the `gerber-renderer` CLI:
+
+```bash
+npm install wasm-gerber-renderer node-gles-webgl2
+```
+
 ## Project Structure
 
 ```text

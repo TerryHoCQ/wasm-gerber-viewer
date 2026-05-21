@@ -9,6 +9,9 @@ The package provides:
 - A `gerber-renderer` CLI for rendering Gerber files to PNG
 - Bundled `wasm-bindgen` output generated during packaging
 
+The browser entrypoint uses the caller's WebGL2 canvas. The Node.js entrypoint
+uses the same WASM/WebGL renderer, but needs a native WebGL2 context provider.
+
 ## Install
 
 ```bash
@@ -32,7 +35,10 @@ For Node.js/headless rendering, also install a WebGL2-capable GLES package:
 npm install wasm-gerber-renderer node-gles-webgl2
 ```
 
-`node-gles-webgl2` is an optional native runtime for Node.js rendering, not a browser dependency. You can also pass a compatible custom GLES module through `rendererOptions.glesModule`.
+`node-gles-webgl2` is an optional native runtime for Node.js rendering, not a
+browser dependency. It creates a headless WebGL2/OpenGL ES 3 context backed by
+ANGLE so the renderer can produce PNG output without a browser. You can also
+pass a compatible custom GLES module through `rendererOptions.glesModule`.
 
 ## Browser Usage
 
@@ -62,6 +68,9 @@ await renderer.withFrame({ width: 1200, height: 800, padding: 24 }, async () => 
 ```
 
 ## Node.js Usage
+
+Install `node-gles-webgl2` before using the Node.js entrypoint unless you pass a
+custom GLES module.
 
 ```js
 import { renderGerberToPngFile } from "wasm-gerber-renderer/node";
