@@ -14,8 +14,17 @@ uses the same WASM/WebGL renderer, but needs a native WebGL2 context provider.
 
 ## Install
 
+Browser users:
+
 ```bash
 npm install wasm-gerber-renderer
+```
+
+CLI users need the renderer package and
+[`node-gles-webgl2`](https://www.npmjs.com/package/node-gles-webgl2):
+
+```bash
+npm install -g wasm-gerber-renderer node-gles-webgl2
 ```
 
 The same package is also published to GitHub Packages as
@@ -28,12 +37,6 @@ npm install @dsafdsaf132/wasm-gerber-renderer
 
 When installing from GitHub Packages, replace import specifiers such as
 `wasm-gerber-renderer` with `@dsafdsaf132/wasm-gerber-renderer`.
-
-For Node.js/headless rendering, also install a WebGL2-capable GLES package:
-
-```bash
-npm install wasm-gerber-renderer node-gles-webgl2
-```
 
 Browser usage does not need `node-gles-webgl2`.
 
@@ -64,6 +67,18 @@ await renderer.withFrame({ width: 1200, height: 800, padding: 24 }, async () => 
 });
 ```
 
+Browser APIs:
+
+| API | Description |
+| --- | --- |
+| `renderGerberToCanvas(canvas, layers, frameOptions)` | One-shot render into an existing WebGL2-capable canvas. Use this for simple viewer or preview cases. |
+| `renderGerberToPng(canvas, layers, frameOptions, exportOptions)` | Renders through a browser canvas and returns a PNG `Blob`. |
+| `createGerberRenderer(canvas, rendererOptions)` | Creates a reusable renderer for rendering multiple frames or layers without reloading the WASM module every time. |
+| `renderer.withFrame(frameOptions, callback)` | Starts a render frame, applies canvas/view options, runs the callback, and presents the rendered layers. |
+| `renderer.renderLayer(layer, layerOptions)` | Adds one Gerber layer to the active frame. Layer options include `color`, `alpha`, `offsetX`, and `offsetY`. |
+| `renderer.exportPng(exportOptions)` | Exports the last rendered browser frame as a PNG `Blob`. |
+| `renderer.dispose()` | Releases the WebGL context when the renderer is no longer needed. |
+
 ## Node.js Usage
 
 Install `node-gles-webgl2` before using the Node.js entrypoint.
@@ -85,13 +100,7 @@ await renderGerberToPngFile(
 
 ## CLI
 
-Install the renderer and Node WebGL runtime globally:
-
-```bash
-npm install -g wasm-gerber-renderer node-gles-webgl2
-```
-
-Then run the CLI directly:
+After global installation, run the CLI directly:
 
 ```bash
 gerber-renderer board.gbr -o board.png --width 1200 --height 800 --background '#05070c'
