@@ -49,54 +49,10 @@ Open `http://localhost:8000` and upload Gerber files.
 
 ## npm Package
 
-The renderer is published as `wasm-gerber-renderer` for applications that need
-Gerber rendering without using the hosted viewer UI.
-
-```bash
-npm install wasm-gerber-renderer
-```
-
-It provides browser canvas rendering, Node.js PNG rendering, and the
-`gerber-renderer` CLI. The package bundles the generated WASM renderer during
-publish, so consumers do not need Rust or `wasm-pack`.
-
-The same package is also available from GitHub Packages under the scoped name
-`@dsafdsaf132/wasm-gerber-renderer`:
-
-```bash
-npm config set @dsafdsaf132:registry https://npm.pkg.github.com
-npm install @dsafdsaf132/wasm-gerber-renderer
-```
-
-### node-gles-webgl2
-
-`node-gles-webgl2` is an optional native runtime for Node.js rendering. It
-creates a headless WebGL2/OpenGL ES 3 context backed by ANGLE, which lets the
-same WASM/WebGL renderer produce PNG output in Node.js and in the CLI.
-
-Browser usage does not need `node-gles-webgl2`. Install it only when using
-`wasm-gerber-renderer/node` or the `gerber-renderer` CLI:
-
-```bash
-npm install wasm-gerber-renderer node-gles-webgl2
-```
-
-For CLI usage, install the packages globally and run `gerber-renderer`
-directly:
-
-```bash
-npm install -g wasm-gerber-renderer node-gles-webgl2
-gerber-renderer board.gbr -o board.png \
-  --width 1200 --height 800 \
-  --background '#05070c' \
-  --padding 24 \
-  --alpha 0.7 \
-  --minimum-feature-pixels 1
-```
-
-CLI defaults are fit-to-view enabled, transparent background, global alpha
-`0.7`, minimum feature size `1`, exact arc-region rendering, and arc quality
-`1` when `--approx-region-arcs` is enabled.
+- [wasm-gerber-renderer npm package](packages/gerber-renderer/README.md)
+- [wasm-gerber-renderer on npm](https://www.npmjs.com/package/wasm-gerber-renderer)
+- [@dsafdsaf132/wasm-gerber-renderer on GitHub Packages](https://github.com/dsafdsaf132/wasm-gerber-viewer/pkgs/npm/wasm-gerber-renderer)
+- [node-gles-webgl2](https://www.npmjs.com/package/node-gles-webgl2)
 
 ## Project Structure
 
