@@ -12,6 +12,9 @@ const DEFAULT_COLORS = [
   [0.0, 1.0, 1.0],
 ];
 const DEFAULT_BACKGROUND = null;
+const DEFAULT_GLOBAL_ALPHA = 0.7;
+const DEFAULT_MINIMUM_FEATURE_PIXELS = 1;
+const DEFAULT_ARC_TESSELLATION_QUALITY = 1;
 
 export async function createGerberRenderer(canvas, rendererOptions = {}) {
   return GerberRenderer.create(canvas, rendererOptions);
@@ -423,9 +426,15 @@ function normalizeFrameOptions(frameOptions) {
     padding: numberOrDefault(frameOptions.padding, 0),
     view: frameOptions.view || null,
     preserveArcRegions: frameOptions.preserveArcRegions !== false,
-    arcTessellationQuality: frameOptions.arcTessellationQuality,
-    minimumFeaturePixels: frameOptions.minimumFeaturePixels,
-    globalAlpha: numberOrDefault(frameOptions.globalAlpha, 1),
+    arcTessellationQuality: numberOrDefault(
+      frameOptions.arcTessellationQuality,
+      DEFAULT_ARC_TESSELLATION_QUALITY,
+    ),
+    minimumFeaturePixels: numberOrDefault(
+      frameOptions.minimumFeaturePixels,
+      DEFAULT_MINIMUM_FEATURE_PIXELS,
+    ),
+    globalAlpha: numberOrDefault(frameOptions.globalAlpha, DEFAULT_GLOBAL_ALPHA),
     colors: DEFAULT_COLORS.map((color) => [...color]),
   };
 }

@@ -101,16 +101,35 @@ Then run the CLI directly:
 gerber-renderer board.gbr -o board.png --width 1200 --height 800 --background '#05070c'
 ```
 
-Useful options:
+More complete example:
+
+```bash
+gerber-renderer top.gbr bottom.gbr \
+  --output board.png \
+  --width 1600 \
+  --height 1000 \
+  --background '#05070c' \
+  --padding 32 \
+  --alpha 0.7 \
+  --minimum-feature-pixels 1
+```
+
+Option defaults:
 
 ```text
---padding <px>                   Fit padding in pixels
---alpha <0-1>                    Global alpha
---minimum-feature-pixels <px>    Minimum line/arc display width
---approx-region-arcs             Approximate region arcs before rendering
---arc-quality <0|1|2>            Approx arc quality
---no-fit                         Use identity view instead of fit view
+--width <px>                     Output width. Default: 1200
+--height <px>                    Output height. Default: 800
+--padding <px>                   Fit padding in pixels. Default: 0
+--background <color>             CSS color for the background. Default: transparent
+--alpha <0-1>                    Global layer alpha. Default: 0.7
+--minimum-feature-pixels <px>    Minimum line/arc display width. Default: 1
+--approx-region-arcs             Approximate region arcs before rendering. Default: false
+--arc-quality <0|1|2>            Arc approximation quality. Default: 1
+--no-fit                         Disable fit-to-view and use identity view. Default: fit enabled
 ```
+
+`--arc-quality` is used only with `--approx-region-arcs`. Quality values are
+`0` for low, `1` for normal, and `2` for high.
 
 ## Custom WASM or GLES Modules
 

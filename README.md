@@ -86,8 +86,17 @@ directly:
 
 ```bash
 npm install -g wasm-gerber-renderer node-gles-webgl2
-gerber-renderer board.gbr -o board.png --width 1200 --height 800
+gerber-renderer board.gbr -o board.png \
+  --width 1200 --height 800 \
+  --background '#05070c' \
+  --padding 24 \
+  --alpha 0.7 \
+  --minimum-feature-pixels 1
 ```
+
+CLI defaults are fit-to-view enabled, transparent background, global alpha
+`0.7`, minimum feature size `1`, exact arc-region rendering, and arc quality
+`1` when `--approx-region-arcs` is enabled.
 
 ## Project Structure
 

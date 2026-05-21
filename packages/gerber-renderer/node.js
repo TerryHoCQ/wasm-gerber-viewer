@@ -23,6 +23,9 @@ const DEFAULT_COLORS = [
 const DEFAULT_WIDTH = 1200;
 const DEFAULT_HEIGHT = 800;
 const DEFAULT_BACKGROUND = null;
+const DEFAULT_GLOBAL_ALPHA = 0.7;
+const DEFAULT_MINIMUM_FEATURE_PIXELS = 1;
+const DEFAULT_ARC_TESSELLATION_QUALITY = 1;
 const REQUIRED_WEBGL2_METHODS = [
   "createVertexArray",
   "bindVertexArray",
@@ -507,9 +510,15 @@ function normalizeFrameOptions(frameOptions) {
     padding: numberOrDefault(frameOptions.padding, 0),
     view: frameOptions.view || null,
     preserveArcRegions: frameOptions.preserveArcRegions !== false,
-    arcTessellationQuality: frameOptions.arcTessellationQuality,
-    minimumFeaturePixels: frameOptions.minimumFeaturePixels,
-    globalAlpha: numberOrDefault(frameOptions.globalAlpha, 1),
+    arcTessellationQuality: numberOrDefault(
+      frameOptions.arcTessellationQuality,
+      DEFAULT_ARC_TESSELLATION_QUALITY,
+    ),
+    minimumFeaturePixels: numberOrDefault(
+      frameOptions.minimumFeaturePixels,
+      DEFAULT_MINIMUM_FEATURE_PIXELS,
+    ),
+    globalAlpha: numberOrDefault(frameOptions.globalAlpha, DEFAULT_GLOBAL_ALPHA),
     colors: DEFAULT_COLORS.map((color) => [...color]),
   };
 }

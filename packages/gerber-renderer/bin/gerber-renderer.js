@@ -9,13 +9,13 @@ Options:
   -o, --output <path>              PNG output path
   --width <px>                     Output width (default: 1200)
   --height <px>                    Output height (default: 800)
-  --padding <px>                   Fit padding in pixels
-  --background <color>             Background color, e.g. #05070c
-  --alpha <0-1>                    Global alpha
-  --minimum-feature-pixels <px>    Minimum line/arc display width
-  --approx-region-arcs             Approximate region arcs before rendering
-  --arc-quality <0|1|2>            Approx arc quality
-  --no-fit                         Use identity view instead of fit view
+  --padding <px>                   Fit padding in pixels (default: 0)
+  --background <color>             Background color, e.g. #05070c (default: transparent)
+  --alpha <0-1>                    Global layer alpha (default: 0.7)
+  --minimum-feature-pixels <px>    Minimum line/arc display width (default: 1)
+  --approx-region-arcs             Approximate region arcs before rendering (default: false)
+  --arc-quality <0|1|2>            Approx arc quality: low, normal, high (default: 1)
+  --no-fit                         Use identity view instead of fit view (default: fit enabled)
   -h, --help                       Show this help
 `;
 
