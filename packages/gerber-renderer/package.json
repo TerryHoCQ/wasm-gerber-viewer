@@ -32,6 +32,7 @@
     "node.js",
     "node.d.ts",
     "README.md",
+    "SKILL.md",
     "LICENSE",
     "wasm/**/*"
   ],
