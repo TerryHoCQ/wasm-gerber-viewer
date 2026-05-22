@@ -1,4 +1,4 @@
-name: Release npm Package
+name: Release Package
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: npm-publish-${{ inputs.version }}
+  group: release-package-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
@@ -23,7 +23,7 @@ env:
 
 jobs:
   publish:
-    name: Version, tag, and publish
+    name: Version, tag, publish, and release
     runs-on: ubuntu-latest
 
     steps:
@@ -139,6 +139,20 @@ jobs:
         working-directory: ${{ env.PACKAGE_DIR }}
         run: npm pack --dry-run
 
+      - name: Pack release artifact
+        id: package-artifact
+        working-directory: ${{ env.PACKAGE_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/npm-package"
+          mkdir -p "$artifact_dir"
+          tarball="$(npm pack --pack-destination "$artifact_dir")"
+
+          echo "path=${artifact_dir}/${tarball}" >> "$GITHUB_OUTPUT"
+          echo "name=${tarball}" >> "$GITHUB_OUTPUT"
+
       - name: Publish to npmjs
         if: steps.release.outputs.npmjs_exists != 'true'
         working-directory: ${{ env.PACKAGE_DIR }}
@@ -181,3 +195,19 @@ jobs:
       - name: Skip GitHub Packages publish
         if: steps.github-package.outputs.exists == 'true'
         run: echo "${{ steps.release.outputs.github_package_name }}@${{ steps.release.outputs.version }} is already published to GitHub Packages; skipping."
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          tag="${{ steps.release.outputs.tag }}"
+          title="${{ steps.release.outputs.package_name }} ${{ steps.release.outputs.version }}"
+          artifact="${{ steps.package-artifact.outputs.path }}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$artifact" --clobber
+          else
+            gh release create "$tag" "$artifact" --title "$title" --generate-notes
+          fi
