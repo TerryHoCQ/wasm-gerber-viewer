@@ -3,85 +3,181 @@ name: Publish npm Package
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: Release tag to publish, for example v0.1.1
+      version:
+        description: "npm version to publish, for example 0.1.4 or v0.1.4"
         required: true
         type: string
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   packages: write
 
 concurrency:
-  group: npm-publish-${{ inputs.tag }}
+  group: npm-publish-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ inputs.tag }}
+  PACKAGE_DIR: packages/gerber-renderer
+  PACKAGE_JSON: packages/gerber-renderer/package.json
 
 jobs:
-  publish-npmjs:
-    name: Publish to npmjs
+  publish:
+    name: Version, tag, and publish
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out
+        uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
-      - name: Setup Node.js for npmjs
+      - name: Set up Node.js for npmjs
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.14.0"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Verify release tag matches package version
+      - name: Set up latest npm
+        run: npm install --global npm@latest
+
+      - name: Prepare release version
+        id: release
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          package_version="$(node -p "require('./packages/gerber-renderer/package.json').version")"
-          if [[ "$RELEASE_TAG" != "v$package_version" ]]; then
-            echo "Release tag $RELEASE_TAG does not match package version v$package_version" >&2
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+            echo "::error::Publish workflow must be run from main, got ${GITHUB_REF_NAME}"
             exit 1
           fi
 
-      - name: Publish package to npmjs
-        working-directory: packages/gerber-renderer
+          version="${INPUT_VERSION#v}"
+          tag="v${version}"
+
+          if ! node -e 'const version = process.argv[1]; if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) process.exit(1)' "$version"; then
+            echo "::error::Invalid semver version: ${INPUT_VERSION}"
+            exit 1
+          fi
+
+          package_name="$(node -p "require('./${PACKAGE_JSON}').name")"
+          github_package_name="@dsafdsaf132/wasm-gerber-renderer"
+
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            tag_version="$(git show "${tag}:${PACKAGE_JSON}" | node -e "let input = ''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => console.log(JSON.parse(input).version));")"
+            if [[ "${tag_version}" != "${version}" ]]; then
+              echo "::error::Git tag ${tag} exists, but ${PACKAGE_JSON} version is ${tag_version}"
+              exit 1
+            fi
+            tag_exists=true
+          else
+            tag_exists=false
+          fi
+
+          if npm view "${package_name}@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            npmjs_exists=true
+          else
+            npmjs_exists=false
+          fi
+
+          if [[ "${tag_exists}" == "false" && "${npmjs_exists}" == "true" ]]; then
+            echo "::error::${package_name}@${version} is already published to npmjs, but tag ${tag} does not exist"
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=${tag_exists}" >> "$GITHUB_OUTPUT"
+          echo "package_name=${package_name}" >> "$GITHUB_OUTPUT"
+          echo "github_package_name=${github_package_name}" >> "$GITHUB_OUTPUT"
+          echo "npmjs_exists=${npmjs_exists}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit release version and tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ "${{ steps.release.outputs.tag_exists }}" == "true" ]]; then
+            echo "Reusing existing release tag ${{ steps.release.outputs.tag }}"
+            git checkout --detach "${{ steps.release.outputs.tag }}"
+            exit 0
+          fi
+
+          current_version="$(node -p "require('./${PACKAGE_JSON}').version")"
+          if [[ "${current_version}" != "${{ steps.release.outputs.version }}" ]]; then
+            npm pkg set "version=${{ steps.release.outputs.version }}" --prefix "$PACKAGE_DIR"
+            git add "$PACKAGE_JSON"
+
+            if git diff --cached --quiet; then
+              echo "::error::No package version changes were produced"
+              exit 1
+            fi
+
+            git commit -m "chore(release): ${{ steps.release.outputs.tag }}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          else
+            echo "${PACKAGE_JSON} is already at ${{ steps.release.outputs.version }}"
+          fi
+
+          git tag "${{ steps.release.outputs.tag }}"
+          git push origin "${{ steps.release.outputs.tag }}"
+
+      - name: Build WASM package
+        run: npm run build:wasm --prefix "$PACKAGE_DIR"
+
+      - name: Check package JavaScript
+        run: npm run check --prefix "$PACKAGE_DIR"
+
+      - name: Verify npm package contents
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: npm pack --dry-run
+
+      - name: Publish to npmjs
+        if: steps.release.outputs.npmjs_exists != 'true'
+        working-directory: ${{ env.PACKAGE_DIR }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.npm_token || secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
 
-  publish-github-packages:
-    name: Publish to GitHub Packages
-    runs-on: ubuntu-latest
+      - name: Skip npmjs publish
+        if: steps.release.outputs.npmjs_exists == 'true'
+        run: echo "${{ steps.release.outputs.package_name }}@${{ steps.release.outputs.version }} is already published to npmjs; skipping."
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
-
-      - name: Setup Node.js for GitHub Packages
+      - name: Set up Node.js for GitHub Packages
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.14.0"
           registry-url: "https://npm.pkg.github.com"
           scope: "@dsafdsaf132"
 
-      - name: Verify release tag matches package version
+      - name: Check GitHub Packages availability
+        id: github-package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          package_version="$(node -p "require('./packages/gerber-renderer/package.json').version")"
-          if [[ "$RELEASE_TAG" != "v$package_version" ]]; then
-            echo "Release tag $RELEASE_TAG does not match package version v$package_version" >&2
-            exit 1
+          if npm view "${{ steps.release.outputs.github_package_name }}@${{ steps.release.outputs.version }}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Prepare GitHub Packages metadata
-        working-directory: packages/gerber-renderer
+      - name: Publish to GitHub Packages
+        if: steps.github-package.outputs.exists != 'true'
+        working-directory: ${{ env.PACKAGE_DIR }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm pkg set name="@dsafdsaf132/wasm-gerber-renderer"
           npm pkg set publishConfig.registry="https://npm.pkg.github.com"
+          npm publish
 
-      - name: Publish package to GitHub Packages
-        working-directory: packages/gerber-renderer
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm publish
+      - name: Skip GitHub Packages publish
+        if: steps.github-package.outputs.exists == 'true'
+        run: echo "${{ steps.release.outputs.github_package_name }}@${{ steps.release.outputs.version }} is already published to GitHub Packages; skipping."
