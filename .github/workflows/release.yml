@@ -84,11 +84,6 @@ jobs:
             npmjs_exists=false
           fi
 
-          if [[ "${tag_exists}" == "false" && "${npmjs_exists}" == "true" ]]; then
-            echo "::error::${package_name}@${version} is already published to npmjs, but tag ${tag} does not exist"
-            exit 1
-          fi
-
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "tag_exists=${tag_exists}" >> "$GITHUB_OUTPUT"
@@ -147,8 +142,20 @@ jobs:
           set -euo pipefail
 
           artifact_dir="${RUNNER_TEMP}/npm-package"
+          pack_log="${artifact_dir}/npm-pack.log"
           mkdir -p "$artifact_dir"
-          tarball="$(npm pack --pack-destination "$artifact_dir")"
+
+          if ! npm pack --pack-destination "$artifact_dir" >"$pack_log" 2>&1; then
+            cat "$pack_log"
+            exit 1
+          fi
+
+          cat "$pack_log"
+          tarball="$(find "$artifact_dir" -maxdepth 1 -type f -name "*.tgz" -printf "%f\n" | sort | tail -n 1)"
+          if [[ -z "$tarball" ]]; then
+            echo "::error::npm pack did not produce a tarball"
+            exit 1
+          fi
 
           echo "path=${artifact_dir}/${tarball}" >> "$GITHUB_OUTPUT"
           echo "name=${tarball}" >> "$GITHUB_OUTPUT"
