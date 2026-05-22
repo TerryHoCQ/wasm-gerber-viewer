@@ -50,7 +50,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dsafdsaf132/wasm-gerber-viewer.git",
-    "directory": "packages/gerber-renderer"
+    "directory": "packages/wasm-gerber-renderer"
   },
   "keywords": [
     "gerber",

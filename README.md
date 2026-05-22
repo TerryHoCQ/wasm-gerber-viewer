@@ -2,7 +2,7 @@
 
 WASM/WebGL2-based Gerber file viewer for PCB visualization.
 
-![WASM Gerber Viewer preview](docs/preview.png)
+![WASM Gerber Viewer preview](demo/preview.png)
 
 Website:
 
@@ -49,7 +49,7 @@ Open `http://localhost:8000` and upload Gerber files.
 
 ## npm Package
 
-- [wasm-gerber-renderer npm package](packages/gerber-renderer/README.md)
+- [wasm-gerber-renderer npm package](packages/wasm-gerber-renderer/README.md)
 
 ## Project Structure
 
@@ -73,7 +73,7 @@ wasm-gerber-viewer/
 │   ├── source-loader.js               # Local, archive, and URL loading
 │   └── viewport.js                    # Camera and viewport math
 ├── packages/
-│   └── gerber-renderer/               # npm package and Node CLI
+│   └── wasm-gerber-renderer/          # npm package and Node CLI
 ├── wasm/
 │   ├── Cargo.toml                     # Rust crate manifest
 │   ├── pkg/                           # Generated wasm-pack output

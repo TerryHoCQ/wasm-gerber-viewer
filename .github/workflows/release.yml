@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PACKAGE_DIR: packages/gerber-renderer
-  PACKAGE_JSON: packages/gerber-renderer/package.json
+  PACKAGE_DIR: packages/wasm-gerber-renderer
+  PACKAGE_JSON: packages/wasm-gerber-renderer/package.json
 
 jobs:
   publish:
