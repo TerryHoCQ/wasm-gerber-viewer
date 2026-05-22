@@ -63,6 +63,7 @@ Useful CLI options:
 - `--approx-region-arcs` uses faster approximate region arcs.
 - `--arc-quality <0|1|2>` controls approximate arc quality.
 - `--no-fit` disables automatic fit-to-view.
+- `--skill` prints package usage notes for AI agents.
 
 The CLI renders valid layers and skips invalid inputs such as non-Gerber files in archives. If every layer fails, it exits with an error.
 

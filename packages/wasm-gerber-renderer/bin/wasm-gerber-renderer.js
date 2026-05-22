@@ -18,13 +18,24 @@ Options:
   --approx-region-arcs             Approximate region arcs before rendering (default: false)
   --arc-quality <0|1|2>            Approx arc quality: low, normal, high (default: 1)
   --no-fit                         Use identity view instead of fit view (default: fit enabled)
+  --skill                          Print AI usage notes
   -h, --help                       Show this help
+
+AI guide: run \`gerber-renderer --skill\` for usage notes.
 `;
 
 const TAR_GZ_EXTENSIONS = [".tar.gz", ".tgz"];
+const SKILL_URL = new URL("../SKILL.md", import.meta.url);
 
 async function main() {
-  const { inputs, output, frameOptions } = parseArgs(process.argv.slice(2));
+  const { inputs, output, frameOptions, showSkill } = parseArgs(
+    process.argv.slice(2),
+  );
+  if (showSkill) {
+    process.stdout.write(await readFile(SKILL_URL, "utf8"));
+    return;
+  }
+
   if (inputs.length === 0 || !output) {
     process.stderr.write(USAGE);
     process.exitCode = 1;
@@ -51,6 +62,7 @@ function parseArgs(args) {
   const inputs = [];
   const frameOptions = {};
   let output = "";
+  let showSkill = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -58,6 +70,8 @@ function parseArgs(args) {
     if (arg === "-h" || arg === "--help") {
       process.stdout.write(USAGE);
       process.exit(0);
+    } else if (arg === "--skill") {
+      showSkill = true;
     } else if (arg === "-o" || arg === "--output") {
       output = readOptionValue(args, ++index, arg);
     } else if (arg === "--width") {
@@ -85,7 +99,7 @@ function parseArgs(args) {
     }
   }
 
-  return { inputs, output, frameOptions };
+  return { inputs, output, frameOptions, showSkill };
 }
 
 function readOptionValue(args, index, option) {

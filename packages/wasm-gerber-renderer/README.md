@@ -299,6 +299,7 @@ CLI options:
 | `--approx-region-arcs` | Disabled | Converts region arcs to line segments before rendering instead of using the exact arc-region renderer. |
 | `--arc-quality <0\|1\|2>` | `1` | Arc tessellation quality: `0` low, `1` normal, `2` high. Mainly relevant with `--approx-region-arcs`. |
 | `--no-fit` | Disabled | Disables fit-to-view and renders with the renderer's identity view. |
+| `--skill` | - | Prints package usage notes for AI agents. |
 | `-h, --help` | - | Prints CLI usage and exits. |
 
 `--arc-quality` is used only with `--approx-region-arcs`. Quality values are
