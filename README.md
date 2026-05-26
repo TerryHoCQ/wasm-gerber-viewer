@@ -49,7 +49,9 @@ Open `http://localhost:8000` and upload Gerber files.
 
 ## npm Package
 
-- [wasm-gerber-renderer](packages/wasm-gerber-renderer/README.md): JavaScript, Node.js, and CLI package for rendering Gerber files to PNG.
+[wasm-gerber-renderer](packages/wasm-gerber-renderer/README.md)
+
+JavaScript, Node.js, and CLI package for rendering Gerber files to PNG.
 
 ## Project Structure
 
