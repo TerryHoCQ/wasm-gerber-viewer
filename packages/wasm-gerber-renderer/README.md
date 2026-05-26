@@ -296,7 +296,7 @@ CLI options:
 - `--approx-region-arcs`: converts region arcs to line segments before rendering.
 - `--arc-quality <0|1|2>`: approximate arc quality. Defaults to `1`.
 - `--no-fit`: disables fit-to-view.
-- `--skill`: prints package usage notes for AI agents.
+- `--skill`: prints [package usage notes](SKILL.md) for AI agents.
 - `-h, --help`: prints CLI usage and exits.
 
 `--arc-quality` is used only with `--approx-region-arcs`. Quality values are
