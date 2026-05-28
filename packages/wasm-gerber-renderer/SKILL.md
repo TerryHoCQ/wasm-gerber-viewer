@@ -61,6 +61,7 @@ Useful CLI options:
 - `--padding <px>` adds fit-to-view padding.
 - `--alpha <0-1>` sets global layer opacity.
 - `--minimum-feature-pixels <px>` keeps thin lines/arcs visible.
+- `--max-render-target-bytes <size>` caps per-render target memory, e.g. `512m` or `2g`.
 - `--approx-region-arcs` uses faster approximate region arcs.
 - `--arc-quality <0|1|2>` controls approximate arc quality.
 - `--no-fit` disables automatic fit-to-view.
@@ -177,6 +178,35 @@ try {
 }
 ```
 
+In Node, parse repeated inputs once with prepared layers:
+
+```js
+import { createNodeGerberRenderer, fileLayer } from "wasm-gerber-renderer/node";
+
+const renderer = await createNodeGerberRenderer();
+
+try {
+  const prepared = await renderer.loadLayers([
+    fileLayer("top.gbr", { color: "#ff4040" }),
+    fileLayer("bottom.gbr", { color: "#40ff40" }),
+  ]);
+
+  await renderer.withFrame({ width: 1920, height: 1080, background: "#000" }, async () => {
+    await renderer.renderLayers(prepared.layers);
+  });
+  const preview = await renderer.exportPng();
+
+  await renderer.withFrame({ width: 3840, height: 2160, background: "#000" }, async () => {
+    await renderer.renderLayers(prepared.layers);
+  });
+  const highRes = await renderer.exportPng();
+} finally {
+  renderer.dispose();
+}
+```
+
+Prepared layer parse options and offsets are fixed at load time. Load the layer again to change `offsetX`, `offsetY`, `preserveArcRegions`, or `arcTessellationQuality`.
+
 ## Input Rules
 
 Browser sources:
@@ -198,7 +228,7 @@ Layer options:
 
 - `name`
 - `color`
-- `alpha`
+- `alpha` overrides frame/global alpha for that layer
 - `offsetX`
 - `offsetY`
 
@@ -213,10 +243,11 @@ Batch APIs skip failed layers by default and continue rendering valid layers:
 - `renderGerberToPngBuffer`
 - `renderGerberToPngFile`
 - `renderer.renderLayers`
+- `renderer.loadLayers`
 
 Use `onLayerError` to report skipped layers. Use `layerErrorMode: "throw"` when a single bad layer should reject the whole render.
 
-`renderer.renderLayer()` is strict and rejects on failure. Use `renderLayers()` for best-effort batch rendering.
+`renderer.renderLayer()` and `renderer.loadLayer()` are strict and reject on failure. Use `renderLayers()` or `loadLayers()` for best-effort batch handling.
 
 ## Common Options
 

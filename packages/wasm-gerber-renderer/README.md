@@ -197,11 +197,43 @@ await renderGerberToPngFile(
 - `renderGerberToPngFile(outputPath, layers, frameOptions, exportOptions, rendererOptions)`: one-shot batch render that writes PNG bytes to `outputPath`. Parent directories must already exist.
 - `fileLayer(path, options)`: creates a path-backed Node layer config. `options` accepts `name`, `color`, `alpha`, `offsetX`, and `offsetY`.
 - `packageRoot()`: returns the installed package directory path.
+- `renderer.loadLayer(layer, layerOptions)`: parses a Node layer once and returns a prepared layer that can be reused across frames.
+- `renderer.loadLayers(layers, options)`: parses multiple layers and returns `{ layers, loadedCount, failures }`. Failed layers are skipped by default.
 - `renderer.withFrame(frameOptions, callback)`: starts a headless render frame and stores rendered pixels after the callback resolves.
 - `renderer.renderLayer(layer, layerOptions)`: adds one layer to the active frame and returns its numeric layer ID. Must be called inside `withFrame()`. This strict API rejects on failure.
 - `renderer.renderLayers(layers, options)`: adds multiple layers and returns `{ renderedCount, failures }`. Failed layers are skipped by default; use `layerErrorMode: "throw"` for strict behavior.
 - `renderer.exportPng(exportOptions)`: exports the last Node frame as PNG bytes.
 - `renderer.dispose()`: releases the GLES context.
+
+Use prepared layers when rendering the same Gerber inputs more than once:
+
+```js
+const renderer = await createNodeGerberRenderer();
+
+try {
+  const prepared = await renderer.loadLayers([
+    fileLayer("top.gbr", { color: "#ff4040" }),
+    fileLayer("bottom.gbr", { color: "#40ff40" }),
+  ]);
+
+  await renderer.withFrame({ width: 1920, height: 1080, background: "#000" }, async () => {
+    await renderer.renderLayers(prepared.layers);
+  });
+  const preview = await renderer.exportPng();
+
+  await renderer.withFrame({ width: 3840, height: 2160, background: "#000" }, async () => {
+    await renderer.renderLayers(prepared.layers);
+  });
+  const highRes = await renderer.exportPng();
+} finally {
+  renderer.dispose();
+}
+```
+
+Prepared layer geometry is parsed with the `offsetX`, `offsetY`,
+`preserveArcRegions`, and `arcTessellationQuality` values used at load time.
+Load the layer again to change those options. Per-frame color and alpha can be
+overridden in `renderLayer(preparedLayer, layerOptions)`.
 
 Batch APIs (`renderGerberToCanvas`, `renderGerberToPng`,
 `renderGerberToPngBuffer`, `renderGerberToPngFile`, and `renderLayers`) render
@@ -222,7 +254,7 @@ the first layer error.
 - `preserveArcRegions`: keeps exact region arcs. Defaults to `true`; set `false` to approximate region arcs.
 - `arcTessellationQuality`: arc approximation quality, `0` low, `1` normal, `2` high. Defaults to `1`.
 - `minimumFeaturePixels`: minimum rendered line/arc width in screen pixels. Defaults to `1`.
-- `globalAlpha`: opacity multiplier applied to rendered layers. Defaults to `0.7`.
+- `globalAlpha`: opacity for layers without an explicit layer `alpha`. Defaults to `0.7`.
 - `layerErrorMode`: `"skip"` renders remaining valid layers; `"throw"` rejects on first failure. Defaults to `"skip"`.
 - `onLayerError`: callback for skipped layers in `"skip"` mode: `{ layer, name, error }`.
 - `rendererOptions`: browser one-shot helpers only; passed through when creating the renderer.
@@ -230,7 +262,7 @@ the first layer error.
 `layerOptions` control a single layer:
 
 - `color`: layer color. Browser accepts `[r, g, b]`; Node also accepts hex and `rgb()`/`rgba()` strings. Defaults to an automatic color cycle.
-- `alpha`: per-layer opacity before `globalAlpha` is applied. Defaults to `1`.
+- `alpha`: per-layer opacity. When set, it overrides `globalAlpha` for that layer.
 - `offsetX`: X offset applied while loading geometry. Defaults to `0`.
 - `offsetY`: Y offset applied while loading geometry. Defaults to `0`.
 - `name`: layer display name for config objects such as `{ source, name }` or `{ path, name }`.
@@ -293,6 +325,7 @@ CLI options:
 - `--background <color>`: hex or `rgb()`/`rgba()` background. Omit for transparent output.
 - `--alpha <0-1>`: global layer opacity. Defaults to `0.7`.
 - `--minimum-feature-pixels <px>`: minimum rendered line/arc width. Defaults to `1`.
+- `--max-render-target-bytes <size>`: per-render target memory cap. Accepts bytes or suffixes like `512m` and `2g`.
 - `--approx-region-arcs`: converts region arcs to line segments before rendering.
 - `--arc-quality <0|1|2>`: approximate arc quality. Defaults to `1`.
 - `--no-fit`: disables fit-to-view.

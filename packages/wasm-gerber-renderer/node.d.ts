@@ -9,6 +9,7 @@ export type GerberNodeSource =
 
 export type GerberNodeLayer =
   | GerberNodeSource
+  | GerberNodePreparedLayer
   | {
       source: GerberNodeSource;
       name?: string;
@@ -26,8 +27,27 @@ export type GerberNodeLayer =
       offsetY?: number;
     };
 
+export type NodeLayerBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
+declare const preparedLayerBrand: unique symbol;
+
+export type GerberNodePreparedLayer = {
+  readonly [preparedLayerBrand]: true;
+  readonly name: string;
+  readonly sourceName: string;
+  readonly bounds: NodeLayerBounds;
+  readonly offsetX: number;
+  readonly offsetY: number;
+};
+
 export type RGBColor = [number, number, number];
 export type RGBAColor = [number, number, number, number];
+export type PngRenderStrategy = "auto" | "full-frame" | "stream";
 
 export type NodeRendererOptions = {
   wasmModule?: unknown;
@@ -58,6 +78,11 @@ export type NodeFrameOptions = {
   arcTessellationQuality?: 0 | 1 | 2;
   minimumFeaturePixels?: number;
   globalAlpha?: number;
+  maxBandBytes?: number;
+  maxFullFrameBytes?: number;
+  maxRenderTargetBytes?: number;
+  framebufferMemorySafetyFactor?: number;
+  strategy?: PngRenderStrategy;
   onLayerError?: (failure: NodeLayerFailure) => void;
   layerErrorMode?: LayerErrorMode;
 };
@@ -71,14 +96,25 @@ export type NodeLayerFailure = {
 };
 
 export type NodeLayerOptions = {
+  name?: string;
   color?: RGBColor | string;
   alpha?: number;
   offsetX?: number;
   offsetY?: number;
 };
 
+export type NodeLayerLoadOptions = NodeLayerOptions & {
+  preserveArcRegions?: boolean;
+  arcTessellationQuality?: 0 | 1 | 2;
+};
+
 export type NodeExportOptions = {
   background?: null | string | RGBAColor;
+  maxBandBytes?: number;
+  maxFullFrameBytes?: number;
+  maxRenderTargetBytes?: number;
+  framebufferMemorySafetyFactor?: number;
+  strategy?: PngRenderStrategy;
 };
 
 export declare function createNodeGerberRenderer(
@@ -122,6 +158,21 @@ export declare class NodeGerberRenderer {
     layers: GerberNodeLayer | GerberNodeLayer[],
     options?: Pick<NodeFrameOptions, "onLayerError" | "layerErrorMode">,
   ): Promise<{ renderedCount: number; failures: NodeLayerFailure[] }>;
+
+  loadLayer(
+    layer: GerberNodeLayer,
+    layerOptions?: NodeLayerLoadOptions,
+  ): Promise<GerberNodePreparedLayer>;
+
+  loadLayers(
+    layers: GerberNodeLayer | GerberNodeLayer[],
+    options?: NodeLayerLoadOptions &
+      Pick<NodeFrameOptions, "onLayerError" | "layerErrorMode">,
+  ): Promise<{
+    layers: GerberNodePreparedLayer[];
+    loadedCount: number;
+    failures: NodeLayerFailure[];
+  }>;
 
   exportPng(exportOptions?: NodeExportOptions): Promise<Uint8Array>;
 
