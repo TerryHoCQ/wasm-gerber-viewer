@@ -93,7 +93,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential python3 libx11-dev libxext-dev
+          sudo apt-get install -y build-essential python3 libx11-dev libxext-dev xvfb
 
       - name: Download package tarball
         uses: actions/download-artifact@v4
@@ -117,7 +117,11 @@ jobs:
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/renderer-smoke"
-          node <<'NODE'
+          node_cmd=(node)
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            node_cmd=(xvfb-run -a node)
+          fi
+          "${node_cmd[@]}" <<'NODE'
           const nodeGles = require("node-gles-webgl2");
           const gl = nodeGles.createWebGLRenderingContext({
             width: 64,
@@ -154,7 +158,11 @@ jobs:
           set -euo pipefail
           cd "${RUNNER_TEMP}/renderer-smoke"
           input_file="$(node -e "console.log(require('node:path').resolve(process.env.GITHUB_WORKSPACE, 'demo/performance-test-stars-1K.gbr'))")"
-          npx --no-install gerber-renderer \
+          renderer_cmd=(npx --no-install gerber-renderer)
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            renderer_cmd=(xvfb-run -a "${renderer_cmd[@]}")
+          fi
+          "${renderer_cmd[@]}" \
             "$input_file" \
             --output out-cli.png \
             --width 640 \
@@ -186,4 +194,8 @@ jobs:
           }
           console.log("Node API PNG bytes:", png.length);
           NODE
-          node smoke-node.mjs
+          node_cmd=(node)
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            node_cmd=(xvfb-run -a node)
+          fi
+          "${node_cmd[@]}" smoke-node.mjs
