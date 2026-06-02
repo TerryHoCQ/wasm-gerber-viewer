@@ -10,11 +10,14 @@ The package provides:
 - Bundled `wasm-bindgen` output generated during packaging
 
 The browser entrypoint uses the caller's WebGL2 canvas. The Node.js entrypoint
-uses the same WASM/WebGL renderer, but needs a native WebGL2 context provider.
+uses the same WASM/WebGL renderer with
+[`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) as its
+default native WebGL2 context provider.
 
 ## Contents
 
 - [Install](#install)
+- [Platform Support](#platform-support)
 - [Browser Usage](#browser-usage)
 - [Type Reference](#type-reference)
 - [Browser API](#browser-api)
@@ -51,6 +54,22 @@ When installing from GitHub Packages, replace import specifiers such as
 `wasm-gerber-renderer` with `@dsafdsaf132/wasm-gerber-renderer`.
 
 Browser usage does not need `node-gles-webgl2`.
+
+## Platform Support
+
+Browser rendering is platform independent and uses the caller's WebGL2 canvas.
+
+Node.js and CLI rendering are supported via
+[`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) on:
+
+- Linux x64
+- Linux arm64
+- macOS arm64
+- Windows x64
+- Windows arm64
+
+macOS x64 is not supported by the default `node-gles-webgl2` ANGLE prebuilt
+archive set.
 
 ## Browser Usage
 
@@ -168,7 +187,10 @@ rendering from the filesystem.
 
 ## Node.js Usage
 
-Install `node-gles-webgl2` before using the Node.js entrypoint.
+Install `node-gles-webgl2` before using the Node.js entrypoint. Node.js and CLI
+rendering are supported via
+[`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) on Linux
+x64/arm64, macOS arm64, and Windows x64/arm64.
 
 ```js
 import { fileLayer, renderGerberToPngFile } from "wasm-gerber-renderer/node";

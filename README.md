@@ -52,6 +52,8 @@ Open `http://localhost:8000` and upload Gerber files.
 [wasm-gerber-renderer](packages/wasm-gerber-renderer/README.md)
 
 JavaScript, Node.js, and CLI package for rendering Gerber files to PNG.
+Node.js and CLI rendering are supported via
+[`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2).
 
 ## Project Structure
 

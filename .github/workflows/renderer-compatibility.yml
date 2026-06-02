@@ -1,0 +1,189 @@
+name: Renderer Compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/renderer-compatibility.yml"
+      - "demo/*.gbr"
+      - "packages/wasm-gerber-renderer/**"
+      - "scripts/vercel-build.sh"
+      - "wasm/**"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/renderer-compatibility.yml"
+      - "demo/*.gbr"
+      - "packages/wasm-gerber-renderer/**"
+      - "scripts/vercel-build.sh"
+      - "wasm/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PACKAGE_DIR: packages/wasm-gerber-renderer
+
+jobs:
+  pack:
+    name: Pack local renderer package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+
+      - name: Pack package with bundled WASM
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          set -euo pipefail
+          artifact_dir="${RUNNER_TEMP}/renderer-package"
+          mkdir -p "$artifact_dir"
+          npm pack --pack-destination "$artifact_dir"
+
+      - name: Upload package tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-gerber-renderer-package
+          path: ${{ runner.temp }}/renderer-package/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: ${{ matrix.platform }}
+    needs: pack
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            runner: ubuntu-latest
+          - platform: Linux arm64
+            runner: ubuntu-24.04-arm
+          - platform: macOS arm64
+            runner: macos-latest
+          - platform: Windows x64
+            runner: windows-latest
+          - platform: Windows arm64
+            runner: windows-11-arm
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+
+      - name: Install Linux build headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 libx11-dev libxext-dev
+
+      - name: Download package tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-gerber-renderer-package
+          path: renderer-package
+
+      - name: Install renderer and node-gles-webgl2
+        env:
+          NODE_GLES_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          smoke_dir="${RUNNER_TEMP}/renderer-smoke"
+          mkdir -p "$smoke_dir"
+          cd "$smoke_dir"
+          npm init -y
+          package_file="$(node -e "const { resolve } = require('node:path'); const { readdirSync } = require('node:fs'); const dir = resolve(process.env.GITHUB_WORKSPACE, 'renderer-package'); const file = readdirSync(dir).find((name) => name.endsWith('.tgz')); if (!file) process.exit(1); console.log(resolve(dir, file));")"
+          npm install "$package_file" node-gles-webgl2@latest
+
+      - name: Check native WebGL2 context
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/renderer-smoke"
+          node <<'NODE'
+          const nodeGles = require("node-gles-webgl2");
+          const gl = nodeGles.createWebGLRenderingContext({
+            width: 64,
+            height: 64,
+            majorVersion: 3,
+            minorVersion: 0,
+          });
+          const required = [
+            "bindVertexArray",
+            "drawArraysInstanced",
+            "vertexAttribDivisor",
+            "readPixels",
+          ];
+          const missing = required.filter((name) => typeof gl[name] !== "function");
+          if (missing.length > 0) {
+            throw new Error(`Missing WebGL2 methods: ${missing.join(", ")}`);
+          }
+          gl.clearColor(0.25, 0.5, 0.75, 1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          const pixel = new Uint8Array(4);
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          if (pixel[3] === 0) {
+            throw new Error("readPixels returned a transparent pixel after clear");
+          }
+          if (typeof gl.destroy === "function") {
+            gl.destroy();
+          } else {
+            gl.dispose?.();
+          }
+          NODE
+
+      - name: Render through CLI
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/renderer-smoke"
+          input_file="$(node -e "console.log(require('node:path').resolve(process.env.GITHUB_WORKSPACE, 'demo/performance-test-stars-1K.gbr'))")"
+          npx --no-install gerber-renderer \
+            "$input_file" \
+            --output out-cli.png \
+            --width 640 \
+            --height 360 \
+            --background '#05070c' \
+            --alpha 1
+          node -e "const { statSync } = require('node:fs'); const size = statSync('out-cli.png').size; if (size < 100) throw new Error('CLI PNG output is unexpectedly small'); console.log('CLI PNG bytes:', size);"
+
+      - name: Render through Node API
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/renderer-smoke"
+          cat > smoke-node.mjs <<'NODE'
+          import { fileLayer, renderGerberToPngBuffer } from "wasm-gerber-renderer/node";
+          import { resolve } from "node:path";
+
+          const png = await renderGerberToPngBuffer(
+            [fileLayer(resolve(process.env.GITHUB_WORKSPACE, "demo/gerber-feature-test.gbr"))],
+            {
+              width: 640,
+              height: 360,
+              background: "#ffffff",
+              globalAlpha: 1,
+            },
+          );
+
+          if (!(png instanceof Uint8Array) || png.length < 100) {
+            throw new Error("Node API PNG output is unexpectedly small");
+          }
+          console.log("Node API PNG bytes:", png.length);
+          NODE
+          node smoke-node.mjs
