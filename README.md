@@ -53,25 +53,18 @@ Open `http://localhost:8000` and upload Gerber files.
 <summary>PowerShell</summary>
 
 ```powershell
-$release = Invoke-RestMethod `
-  -Uri "https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases/latest"
-$asset = $release.assets |
+$viewerUrl = (
+  Invoke-RestMethod -Uri "https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases/latest"
+).assets |
   Where-Object { $_.name -match '^wasm-gerber-viewer-.*\.tar\.gz$' } |
-  Select-Object -First 1
-if (-not $asset) { throw "No prebuilt viewer release asset found." }
+  Select-Object -First 1 -ExpandProperty browser_download_url
 
-Invoke-WebRequest -Uri $asset.browser_download_url -OutFile viewer.tar.gz
+Invoke-WebRequest -Uri $viewerUrl -OutFile viewer.tar.gz
 tar -xzf viewer.tar.gz
 Remove-Item viewer.tar.gz
 Set-Location ((Get-ChildItem -Directory -Filter "wasm-gerber-viewer-*" | Select-Object -First 1).FullName)
 
-if (Get-Command py -ErrorAction SilentlyContinue) {
-  py -3 -m http.server 8000
-} elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-  python3 -m http.server 8000
-} else {
-  python -m http.server 8000
-}
+python -m http.server 8000
 ```
 
 Open `http://localhost:8000` and upload Gerber files.
