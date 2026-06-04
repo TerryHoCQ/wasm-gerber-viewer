@@ -173,37 +173,38 @@ wasm-gerber-viewer/
 
 - Chrome 80+, Firefox 75+, Safari 15+, Edge 80+
 
-## 示例来源
+## Source
 
-示例压缩包从各自的上游项目加载，不包含在本仓库中。
+Sample archives are loaded from their upstream sources and are not bundled in
+this repository.
 
 <details>
 <summary>Sample 1: KLP-5e ESP32 Sensor Board</summary>
 
-- 项目：[KLP-5e ESP32 Sensor Board](https://github.com/futureshocked/KLP-5e-ESP32-sensor-board)
+- Project: [KLP-5e ESP32 Sensor Board](https://github.com/futureshocked/KLP-5e-ESP32-sensor-board)
 - Copyright: Copyright (c) 2025, Peter Dalmaris
-- 许可证：CERN-OHL-S v2.0
-- 压缩包：<https://raw.githubusercontent.com/futureshocked/KLP-5e-ESP32-sensor-board/main/KiCad%20project/dfm/gerber.zip>
+- License: CERN-OHL-S v2.0
+- Archive: <https://raw.githubusercontent.com/futureshocked/KLP-5e-ESP32-sensor-board/main/KiCad%20project/dfm/gerber.zip>
 
 </details>
 
 <details>
 <summary>Sample 2: Xassette-Asterisk</summary>
 
-- 项目：[Xassette-Asterisk](https://github.com/SdtElectronics/Xassette-Asterisk)
+- Project: [Xassette-Asterisk](https://github.com/SdtElectronics/Xassette-Asterisk)
 - Copyright: SdtElectronics
-- 许可证：CERN-OHL-W v2.0
-- 压缩包：<https://processor-cdn.kitspace.org/v6/SdtElectronics/Xassette-Asterisk/6ccd88501c99e2339571de744d003d571be47fad/_/Xassette-Asterisk-6ccd885-gerbers.zip>
+- License: CERN-OHL-W v2.0
+- Archive: <https://processor-cdn.kitspace.org/v6/SdtElectronics/Xassette-Asterisk/6ccd88501c99e2339571de744d003d571be47fad/_/Xassette-Asterisk-6ccd885-gerbers.zip>
 
 </details>
 
 <details>
 <summary>Sample 3: OtterCastAmp</summary>
 
-- 项目：[OtterCastAmp](https://github.com/Ottercast/OtterCastAmp)
+- Project: [OtterCastAmp](https://github.com/Ottercast/OtterCastAmp)
 - Copyright: Copyright (c) 2021 Ottercast, Niklas Fauth
-- 许可证：MIT License
-- 压缩包：<https://processor-cdn.kitspace.org/v6/Ottercast/OtterCastAmp/0b5f7f9a8e4e43a5d39048b9a1fa03e5cf7fc9f7/_/OtterCastAmp-0b5f7f9-gerbers.zip>
+- License: MIT License
+- Archive: <https://processor-cdn.kitspace.org/v6/Ottercast/OtterCastAmp/0b5f7f9a8e4e43a5d39048b9a1fa03e5cf7fc9f7/_/OtterCastAmp-0b5f7f9-gerbers.zip>
 
 </details>
 
