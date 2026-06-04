@@ -32,21 +32,16 @@ Website:
 <summary>Bash</summary>
 
 ```bash
-set -euo pipefail
-
-release_json="$(curl -fsSL https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases/latest)"
 viewer_url="$(
-  printf '%s\n' "$release_json" |
+  curl -fsSL https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases/latest |
   sed -n '/"browser_download_url": .*\/wasm-gerber-viewer-.*\.tar\.gz"/ {
     s/.*"browser_download_url": *"\([^"]*\)".*/\1/p
     q
   }'
 )"
-test -n "$viewer_url"
 
-curl -fsSL "$viewer_url" | tar -xz
-cd wasm-gerber-viewer-*
-
+curl -fsSL "$viewer_url" | tar -xz &&
+cd wasm-gerber-viewer-* &&
 python3 -m http.server 8000
 ```
 
