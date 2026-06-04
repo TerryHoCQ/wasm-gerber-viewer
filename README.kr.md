@@ -2,7 +2,7 @@
 
 # wasm-gerber-viewer
 
-PCB 시각화를 위한 WASM/WebGL2 기반 Gerber 파일 뷰어.
+PCB 시각화를 위한 WASM/WebGL2 기반 Gerber 파일 뷰어입니다.
 
 ![WASM Gerber Viewer preview](demo/preview.png)
 
@@ -14,7 +14,7 @@ PCB 시각화를 위한 WASM/WebGL2 기반 Gerber 파일 뷰어.
 
 ---
 
-Website:
+웹사이트:
 
 - [Viewer](https://wasm-gerber-viewer.vercel.app/) / [Mirror](https://dsafdsaf132.github.io/wasm-gerber-viewer/)
 - [Sample 1: KLP-5e ESP32 Sensor Board](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffutureshocked%2FKLP-5e-ESP32-sensor-board%2Fmain%2FKiCad%2520project%2Fdfm%2Fgerber.zip)
@@ -27,15 +27,15 @@ Website:
 
 ## 기능
 
-- 대형 Gerber 파일(10 MB 이상)을 위한 고성능 렌더링
-- WASM 기반 WebGL2 하드웨어 가속 렌더링
+- 대형 Gerber 파일(10 MB 이상)을 빠르게 렌더링
+- WASM과 WebGL2를 이용한 하드웨어 가속 렌더링
 - RS-274X Gerber 렌더링 지원
-- NC drill 파일 오버레이 렌더링 지원
-- 모바일 터치 조작 지원
+- NC drill 오버레이 렌더링 지원
+- 모바일 기기 터치 조작 지원
 - 레이어별 색상, 투명도, 표시 여부 제어
-- 상하/좌우 플립 컨트롤
-- mm/inch 전환이 가능한 줄자 측정
-- 줄자 오버레이를 포함한 해상도 선택 스크린샷 내보내기
+- 좌우/상하 반전 제어
+- mm/inch 단위 전환이 가능한 자 측정
+- 자 오버레이를 포함한 해상도별 스크린샷 내보내기
 
 ## 빠른 시작
 
@@ -56,7 +56,7 @@ cd wasm-gerber-viewer-* &&
 python3 -m http.server 8000
 ```
 
-브라우저에서 `http://localhost:8000`을 열고 Gerber 파일을 업로드하세요.
+브라우저에서 `http://localhost:8000`을 열고 Gerber 파일을 업로드합니다.
 
 </details>
 
@@ -78,15 +78,15 @@ Set-Location ((Get-ChildItem -Directory -Filter "wasm-gerber-viewer-*" | Select-
 python -m http.server 8000
 ```
 
-브라우저에서 `http://localhost:8000`을 열고 Gerber 파일을 업로드하세요.
+브라우저에서 `http://localhost:8000`을 열고 Gerber 파일을 업로드합니다.
 
 </details>
 
 ## 빌드
 
-prebuilt release artifact 대신 로컬에서 WASM 패키지를 다시 빌드해야 할 때 사용합니다.
+미리 빌드된 release artifact 대신 로컬에서 WASM 패키지를 다시 빌드해야 할 때 사용합니다.
 
-Requirements:
+요구 사항:
 
 - **Rust stable** - [rustup](https://rustup.rs/)으로 설치
 - **wasm-pack** - `cargo install wasm-pack`
@@ -109,28 +109,73 @@ Node.js와 CLI 렌더링은
 ```text
 wasm-gerber-viewer/
 ├── index.html                         # 애플리케이션 셸
+├── package.json                       # 프로젝트 메타데이터와 스크립트
 ├── css/
 │   └── style.css                      # UI 스타일
-├── js/                                # 브라우저 앱 모듈
-├── vendor/                            # vendored 브라우저 라이브러리
+├── js/
+│   ├── main.js                        # GerberViewer 실행 흐름과 UI 연결
+│   ├── config.js                      # 공통 상수와 기본값
+│   ├── diagnostics.js                 # 진단 패널
+│   ├── dom-elements.js                # DOM 요소 조회
+│   ├── drawer-controller.js           # 드로어 열기/닫기 동작
+│   ├── file-utils.js                  # 파일 이름과 오류 처리 유틸리티
+│   ├── gerber-parse-worker.js         # Gerber 파싱 Web Worker
+│   ├── layer-filters.js               # 레이어 종류 필터
+│   ├── layer-list.js                  # 레이어 목록 렌더링
+│   ├── measurements.js                # 자 측정과 단위 표시
+│   ├── notifications.js               # 토스트 알림
+│   ├── screenshot-exporter.js         # 스크린샷 내보내기
+│   ├── source-loader.js               # 로컬 파일, 압축 파일, URL 입력 로딩
+│   ├── viewer-options.js              # 뷰어 옵션 저장과 복원
+│   └── viewport.js                    # 카메라와 viewport 계산
+├── vendor/
+│   ├── README.md                      # vendored 라이브러리 설명
+│   ├── jszip-3.10.1.min.js            # ZIP 압축 파일 로딩
+│   ├── lucide-1.16.0.min.js           # UI 아이콘
+│   └── licenses/                      # vendored 라이선스
 ├── packages/
-│   └── wasm-gerber-renderer/          # npm 패키지와 Node CLI
-├── wasm/                              # Rust/WASM parser 및 renderer
-├── demo/                              # 샘플 및 성능 테스트 Gerber
-├── docs/                              # README 이미지
-├── scripts/                           # 빌드 스크립트
-└── .github/workflows/                 # CI/CD workflow
+│   └── wasm-gerber-renderer/
+│       ├── package.json               # npm 패키지 설정
+│       ├── index.js                   # 브라우저 렌더러 진입점
+│       ├── node.js                    # Node.js/headless 렌더러 진입점
+│       ├── shared.js                  # 브라우저/Node 공통 로직
+│       ├── index.d.ts                 # 브라우저 타입 정의
+│       ├── node.d.ts                  # Node.js 타입 정의
+│       ├── bin/                       # gerber-renderer CLI
+│       ├── scripts/                   # 패키징용 WASM stage/clean 스크립트
+│       └── test/                      # 패키지 테스트
+├── wasm/
+│   ├── Cargo.toml                     # Rust crate manifest
+│   ├── Cargo.lock                     # Rust dependency lockfile
+│   ├── pkg/                           # 생성된 wasm-pack 출력
+│   └── src/
+│       ├── lib.rs                     # WASM API 진입점
+│       ├── drill.rs                   # Excellon/NC drill 파서
+│       ├── parse_common.rs            # 파서 숫자 처리 공통 함수
+│       ├── parser.rs                  # Gerber 파서 진입점
+│       ├── parser/                    # aperture, macro, geometry, state, tests
+│       ├── renderer.rs                # WebGL 렌더러
+│       ├── renderer/                  # buffer, camera, shader, GLSL 소스
+│       ├── shape.rs                   # geometry 데이터 모델
+│       └── util.rs                    # 포맷팅과 유틸리티
+├── demo/                              # 샘플과 성능 테스트 Gerber
+├── scripts/
+│   └── vercel-build.sh                # CI/Vercel WASM 빌드 스크립트
+└── .github/workflows/
+    ├── build-and-deploy.yml           # 빌드, 테스트, 배포 워크플로
+    ├── renderer-compatibility.yml     # 렌더러 패키지 호환성 테스트
+    └── release.yml                    # 수동 release 워크플로
 ```
 
-## 브라우저 요구사항
+## 브라우저 요구 사항
 
-WebGL2를 지원하는 최신 브라우저:
+WebGL2를 지원하는 최신 브라우저가 필요합니다.
 
 - Chrome 80+, Firefox 75+, Safari 15+, Edge 80+
 
-## Source
+## 출처
 
-샘플 archive는 upstream source에서 로드되며 이 저장소에 포함되지 않습니다.
+샘플 압축 파일은 각 원본 출처에서 로드하며 이 저장소에 포함하지 않습니다.
 
 <details>
 <summary>Sample 1: KLP-5e ESP32 Sensor Board</summary>

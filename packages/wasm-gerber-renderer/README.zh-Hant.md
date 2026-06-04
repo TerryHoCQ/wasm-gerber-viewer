@@ -8,26 +8,28 @@
 
 ---
 
-基於 `wasm-gerber-viewer` Rust/WASM parser 與 renderer 的 WebGL2 Gerber renderer。
+本套件是一個基於 `wasm-gerber-viewer` Rust/WASM 解析器與渲染器的 WebGL2 Gerber 渲染工具。
 
-這個套件提供：
+本套件提供：
 
-- 在瀏覽器 canvas 中渲染 Gerber source string、`File`、`Blob`、`ArrayBuffer` 或 `Uint8Array` 輸入
-- 透過 headless WebGL2 context 在 Node.js 中渲染 PNG，並支援直接寫入檔案或 stream
-- 將 Gerber 檔案或 `.tar.gz`/`.tgz` archive 渲染成 PNG 的 `gerber-renderer` CLI
-- 打包時產生並包含的 `wasm-bindgen` output
+- 在瀏覽器 canvas 中渲染 Gerber 內容字串、`File`、`Blob`、`ArrayBuffer` 或 `Uint8Array`
+- 透過無介面的 WebGL2 上下文在 Node.js 中渲染 PNG，並支援直接輸出到檔案或串流
+- 將 Gerber 檔案或 `.tar.gz`/`.tgz` 壓縮檔渲染為 PNG 的 `gerber-renderer` CLI
+- 打包時產生並內建的 `wasm-bindgen` 輸出
 
-瀏覽器 entrypoint 使用呼叫方提供的 WebGL2 canvas。Node.js entrypoint 使用同一套 WASM/WebGL renderer，並預設透過 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 提供 native WebGL2 context。
+瀏覽器進入點使用呼叫方提供的 WebGL2 canvas。Node.js 進入點使用同一個 WASM/WebGL 渲染器，並預設透過 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 建立原生 WebGL2 上下文。
 
-## 內容
+## 目錄
 
 - [安裝](#安裝)
 - [平台支援](#平台支援)
 - [瀏覽器用法](#瀏覽器用法)
+- [型別參考](#型別參考)
+- [瀏覽器 API](#瀏覽器-api)
 - [Node.js 用法](#nodejs-用法)
+- [Node.js API](#nodejs-api)
+- [API 選項](#api-選項)
 - [CLI](#cli)
-- [主要 API](#主要-api)
-- [選項](#選項)
 - [授權](#授權)
 
 ## 安裝
@@ -38,26 +40,28 @@
 npm install wasm-gerber-renderer
 ```
 
-CLI 使用者需要 renderer 套件與 [`node-gles-webgl2`](https://www.npmjs.com/package/node-gles-webgl2)：
+CLI 使用者需要渲染器套件與 [`node-gles-webgl2`](https://www.npmjs.com/package/node-gles-webgl2)。
 
 ```bash
 npm install -g wasm-gerber-renderer node-gles-webgl2
 ```
 
-同一個套件也發布到 GitHub Packages，名稱為 `@dsafdsaf132/wasm-gerber-renderer`：
+同一個套件也以 `@dsafdsaf132/wasm-gerber-renderer` 名稱發布到 GitHub Packages。
 
 ```bash
 npm config set @dsafdsaf132:registry https://npm.pkg.github.com
 npm install @dsafdsaf132/wasm-gerber-renderer
 ```
 
-從 GitHub Packages 安裝時，請把 import specifier 中的 `wasm-gerber-renderer` 改成 `@dsafdsaf132/wasm-gerber-renderer`。
+從 GitHub Packages 安裝時，需要把 import 路徑中的 `wasm-gerber-renderer` 改為 `@dsafdsaf132/wasm-gerber-renderer`。
+
+瀏覽器用法不需要 `node-gles-webgl2`。
 
 ## 平台支援
 
-瀏覽器渲染不依賴平台，使用呼叫方提供的 WebGL2 canvas。
+瀏覽器渲染與平台無關，使用呼叫方提供的 WebGL2 canvas。
 
-Node.js 與 CLI 渲染透過 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支援：
+Node.js 與 CLI 渲染透過 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支援以下平台：
 
 - Linux x64
 - Linux arm64
@@ -65,7 +69,7 @@ Node.js 與 CLI 渲染透過 [`node-gles-webgl2`](https://github.com/dsafdsaf132
 - Windows x64
 - Windows arm64
 
-預設的 `node-gles-webgl2` ANGLE prebuilt archive set 不支援 macOS x64。
+預設的 `node-gles-webgl2` ANGLE 預編譯套件不支援 macOS x64。
 
 ## 瀏覽器用法
 
@@ -81,7 +85,7 @@ await renderGerberToCanvas(canvas, gerber, {
 });
 ```
 
-重複渲染時請重用 renderer instance：
+如果需要重複渲染，請重複使用渲染器實例。
 
 ```js
 import { createGerberRenderer } from "wasm-gerber-renderer";
@@ -96,11 +100,87 @@ await renderer.withFrame({ width: 1200, height: 800, padding: 24 }, async () => 
 });
 ```
 
-Batch helper 預設會盡可能渲染所有 valid layer。某一層 parse 失敗時，其餘 layer 仍會繼續渲染。使用 `onLayerError` 檢查 skipped layer，或設定 `layerErrorMode: "throw"` 使用 strict behavior。
+批次渲染輔助函式預設會盡可能渲染所有有效圖層。如果某個圖層解析失敗，其餘圖層仍會繼續渲染。可以透過 `onLayerError` 查看被跳過的圖層，或設定 `layerErrorMode: "throw"` 在首次失敗時中斷。
+
+## 型別參考
+
+顏色陣列使用 `0` 到 `1` 範圍內的正規化通道值。
+
+```ts
+type RGBColor = [number, number, number];
+type RGBAColor = [number, number, number, number];
+
+type GerberSource =
+  | File
+  | string
+  | Blob
+  | ArrayBuffer
+  | Uint8Array;
+
+type GerberLayer =
+  | GerberSource
+  | {
+      source: GerberSource;
+      name?: string;
+      color?: RGBColor;
+      alpha?: number;
+      offsetX?: number;
+      offsetY?: number;
+    };
+```
+
+在瀏覽器 API 中，`string` 輸入來源表示 Gerber 檔案內容。`File`、`Blob`、`ArrayBuffer` 與 `Uint8Array` 輸入來源會被解碼為文字。圖層設定物件可以把每層選項直接附加到輸入來源上。
+
+Node.js 接受相同的內容輸入來源，並額外支援透過 `URL`、`{ path }` 或 `{ path, ...options }` 圖層物件指定檔案路徑。
+
+```ts
+type GerberNodeSource =
+  | File
+  | string
+  | Blob
+  | ArrayBuffer
+  | Uint8Array
+  | URL
+  | { path: string };
+
+type GerberNodeLayer =
+  | GerberNodeSource
+  | {
+      source: GerberNodeSource;
+      name?: string;
+      color?: RGBColor | string;
+      alpha?: number;
+      offsetX?: number;
+      offsetY?: number;
+    }
+  | {
+      path: string;
+      name?: string;
+      color?: RGBColor | string;
+      alpha?: number;
+      offsetX?: number;
+      offsetY?: number;
+    };
+```
+
+在 Node.js API 中，普通 `string` 仍然表示 Gerber 內容。從檔案系統讀取並渲染時，請使用 `{ path: "board.gbr" }`、`fileLayer("board.gbr")` 或 `file:` URL。
+
+## 瀏覽器 API
+
+- `renderGerberToCanvas(canvas, layers, frameOptions)`：一次呼叫即可將圖層批次渲染到既有的 WebGL2 canvas。`layers` 可以是單個 `GerberLayer`、陣列或 `FileList`。失敗的圖層預設會被跳過。
+- `renderGerberToPng(canvas, layers, frameOptions, exportOptions)`：在瀏覽器中完成一次性渲染，並回傳 PNG `Blob`。
+- `renderGerberToPngStream(canvas, writable, layers, frameOptions, exportOptions)`：把 PNG 資料區塊寫入 `WritableStream` 並關閉它。需要瀏覽器支援 `CompressionStream`。
+- `createGerberRenderer(canvas, rendererOptions)`：建立可重複使用的渲染器，用於渲染多個渲染幀或多個圖層。
+- `renderer.withFrame(frameOptions, callback)`：開始一個渲染幀，套用 canvas 與視圖選項，並在回呼函式結束後顯示渲染後的圖層。
+- `renderer.renderLayer(layer, layerOptions)`：向目前渲染幀加入一個圖層，並回傳數值型圖層 ID。必須在 `withFrame()` 內呼叫；這是嚴格介面，失敗時會以該錯誤 reject。
+- `renderer.renderLayers(layers, options)`：加入多個圖層，並回傳 `{ renderedCount, failures }`。失敗的圖層預設會被跳過；需要嚴格行為時使用 `layerErrorMode: "throw"`。
+- `renderer.exportPng(exportOptions)`：把最後一個瀏覽器渲染幀匯出為 PNG `Blob`。
+- `renderer.exportPngStream(writable, exportOptions)`：把最後一個瀏覽器渲染幀匯出到 `WritableStream`，不需要先組裝成 `Blob`。
+- `renderer.dispose()`：釋放 WebGL 上下文。
 
 ## Node.js 用法
 
-使用 Node.js entrypoint 前請安裝 `node-gles-webgl2`。
+使用 Node.js 進入點前請安裝 `node-gles-webgl2`。Node.js 與 CLI 渲染透過 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支援 Linux x64/arm64、macOS arm64 與 Windows x64/arm64。
 
 ```js
 import { fileLayer, renderGerberToPngFile } from "wasm-gerber-renderer/node";
@@ -116,11 +196,33 @@ await renderGerberToPngFile(
     height: 800,
     background: "#05070c",
     padding: 24,
+    onLayerError: ({ name, error }) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Skipped ${name}: ${message}`);
+    },
   },
 );
 ```
 
-需要多次渲染同一組 Gerber 輸入時，請使用 prepared layer。
+## Node.js API
+
+- `createNodeGerberRenderer(rendererOptions)`：建立由原生 WebGL2/GLES 上下文支撐、可重複使用的無介面渲染器。
+- `renderGerberToPngBuffer(layers, frameOptions, exportOptions, rendererOptions)`：一次呼叫即可批次渲染，並以 `Uint8Array` 回傳 PNG 位元組資料。
+- `renderGerberToPngFile(outputPath, layers, frameOptions, exportOptions, rendererOptions)`：一次呼叫即可批次渲染，把 PNG 位元組資料寫入暫存檔，成功後替換 `outputPath`。父目錄必須已存在。
+- `renderGerberToPngStream(writable, layers, frameOptions, exportOptions, rendererOptions)`：一次呼叫即可批次渲染，把 PNG 資料區塊寫入 Node 可寫串流。
+- `fileLayer(path, options)`：建立基於路徑的 Node 圖層設定。`options` 接受 `name`、`color`、`alpha`、`offsetX`、`offsetY`。
+- `packageRoot()`：回傳已安裝套件的目錄路徑。
+- `renderer.loadLayer(layer, layerOptions)`：解析一個 Node 圖層，並回傳可跨渲染幀重複使用的預載圖層。
+- `renderer.loadLayers(layers, options)`：解析多個圖層，並回傳 `{ layers, loadedCount, failures }`。失敗的圖層預設會被跳過。
+- `renderer.withFrame(frameOptions, callback)`：開始無介面渲染幀，並在回呼函式結束後儲存渲染出的像素資料。
+- `renderer.renderLayer(layer, layerOptions)`：向目前渲染幀加入一個圖層，並回傳數值型圖層 ID。必須在 `withFrame()` 內呼叫；這是嚴格介面，失敗時會以該錯誤 reject。
+- `renderer.renderLayers(layers, options)`：加入多個圖層，並回傳 `{ renderedCount, failures }`。失敗的圖層預設會被跳過；需要嚴格行為時使用 `layerErrorMode: "throw"`。
+- `renderer.exportPng(exportOptions)`：把最後一個 Node 渲染幀匯出為記憶體中的 PNG 位元組資料。
+- `renderer.exportPngStream(writable, exportOptions)`：把最後一個 Node 渲染幀匯出到可寫串流。
+- `renderer.exportPngFile(outputPath, exportOptions)`：把最後一個 Node 渲染幀匯出到暫存檔，成功後替換 `outputPath`。
+- `renderer.dispose()`：釋放 GLES 上下文。
+
+如果同一批 Gerber 輸入需要渲染多次，請使用預載圖層。
 
 ```js
 const renderer = await createNodeGerberRenderer();
@@ -135,77 +237,125 @@ try {
     await renderer.renderLayers(prepared.layers);
   });
   const preview = await renderer.exportPng();
+
+  await renderer.withFrame({ width: 3840, height: 2160, background: "#000" }, async () => {
+    await renderer.renderLayers(prepared.layers);
+  });
+  const highRes = await renderer.exportPng();
 } finally {
   renderer.dispose();
 }
 ```
 
+預載圖層的幾何資料會使用載入時的 `offsetX`、`offsetY`、`preserveArcRegions` 與 `arcTessellationQuality` 值進行解析。要修改這些選項，需要重新載入圖層。每個渲染幀的顏色與透明度（alpha）可以在 `renderLayer(preparedLayer, layerOptions)` 中覆寫。
+
+批次 API（`renderGerberToCanvas`、`renderGerberToPng`、`renderGerberToPngStream`、`renderGerberToPngBuffer`、`renderGerberToPngFile` 與 `renderLayers`）會渲染所有可載入的有效圖層。如果所有圖層都失敗，操作會以第一個圖層錯誤 reject。
+
+## API 選項
+
+`frameOptions` 控制輸出幀與渲染器行為：
+
+- `width`：輸出寬度，單位為像素。預設使用瀏覽器 canvas 的 width，Node 中預設 `1200`。
+- `height`：輸出高度，單位為像素。預設使用瀏覽器 canvas 的 height，Node 中預設 `800`。
+- `clear`：渲染前清空幀。預設 `true`；Node 總是渲染到新的緩衝區。
+- `background`：輸出背景。預設 `null`，表示透明輸出。接受 CSS 色彩字串或 `[r, g, b, a]`。
+- `fit`：把所有已載入圖層的邊界適配到輸出幀。預設 `true`。
+- `padding`：啟用 `fit` 時套用的像素內邊距。預設 `0`。
+- `flipX`：圍繞輸出幀中心水平鏡像輸出。預設 `false`。
+- `flipY`：圍繞輸出幀中心垂直鏡像輸出。預設 `false`。
+- `view`：手動視圖參數 `{ zoomX, zoomY, offsetX, offsetY }`；優先於 `fit`。
+- `preserveArcRegions`：保留精確的 region 圓弧。預設 `true`；設為 `false` 時會把 region 圓弧近似為線段。
+- `arcTessellationQuality`：圓弧近似品質，`0` 為低、`1` 為標準、`2` 為高。預設 `1`。
+- `minimumFeaturePixels`：線段/圓弧的最小渲染寬度，單位為螢幕像素。預設 `1`。
+- `renderDrills`：把 NC drill 檔案（`.drl`、`.nc`、`.xnc`、`.xln`）渲染為鑽孔疊加層。預設 `true`。
+- `globalAlpha`：沒有明確圖層 `alpha` 時使用的透明度。預設 `0.7`。
+- `layerErrorMode`：`"skip"` 會繼續渲染剩餘有效圖層；`"throw"` 會在第一次失敗時中斷。預設 `"skip"`。
+- `onLayerError`：`"skip"` 模式下接收被跳過圖層的回呼函式，參數為 `{ layer, name, error }`。
+- `rendererOptions`：僅用於瀏覽器一次性輔助函式；建立渲染器時會原樣傳入。
+
+`layerOptions` 控制單個圖層：
+
+- `color`：圖層顏色。瀏覽器接受 `[r, g, b]`；Node 也接受 hex 與 `rgb()`/`rgba()` 字串。預設使用自動顏色循環。
+- `alpha`：每層透明度。設定後會覆蓋該圖層的 `globalAlpha`。
+- `offsetX`：載入幾何資料時套用的 X 方向偏移。預設 `0`。
+- `offsetY`：載入幾何資料時套用的 Y 方向偏移。預設 `0`。
+- `kind`：當輸入來源檔名不存在或含義不明確時，強制指定 `"gerber"` 或 `"drill"`。
+- `name`：用於 `{ source, name }` 或 `{ path, name }` 等設定物件的圖層顯示名稱。
+
+`exportOptions` 控制 PNG 匯出：
+
+- `type`：僅瀏覽器使用的匯出 MIME 類型。預設 `image/png`；Node 始終寫 PNG。
+- `quality`：僅瀏覽器使用的編碼品質，會傳給 `canvas.toBlob`。
+- `background`：匯出時使用的背景，可覆蓋最後一個渲染幀的背景。使用 `null` 保持透明。
+- `maxBandBytes`：串流 PNG 匯出的近似列緩衝預算。Node 也會在高解析度分塊渲染中使用它。
+
+`rendererOptions` 控制渲染器建立：
+
+- `wasmModule`：預先載入的 WASM JS 模組。大多數使用者不需要。
+- `wasmModuleUrl`：用於 import WASM JS 模組的 URL。
+- `wasmBinaryUrl`：僅 Node.js 使用的 `.wasm` 二進位檔 URL。
+- `wasmInitInput`：傳給 WASM 模組初始化函式的自訂值。
+- `contextAttributes`：WebGL 上下文屬性。
+- `releaseContext`：在 `dispose()` 時釋放 WebGL/GLES 上下文。預設 `true`。
+- `glesModule`：僅 Node.js 使用的自訂 GLES 模組物件。常規 CLI 用法使用 `node-gles-webgl2`。
+- `glesModuleName`：僅 Node.js 使用，用於載入 GLES 執行階段的模組名稱。
+- `gl`：僅 Node.js 使用的預先建立 WebGL2 相容上下文。
+
 ## CLI
 
+全域安裝後可以直接執行 CLI。
+
 ```bash
-gerber-renderer board.gbr --output board.png --width 1600 --height 1000
-gerber-renderer gerbers.tar.gz --output board.png --background "#05070c"
+gerber-renderer board.gbr --width 1200 --height 800 --background '#05070c'
 ```
 
-對常見 generic Gerber/drill 檔案，省略 `--output` 時會依輸入檔名產生 PNG 名稱。一次渲染多個檔案時建議指定 `--output`。
+更完整的範例：
 
-## 主要 API
+```bash
+gerber-renderer top.gbr bottom.gbr \
+  --output board.png \
+  --width 1600 \
+  --height 1000 \
+  --background '#05070c' \
+  --padding 32 \
+  --alpha 0.7 \
+  --minimum-feature-pixels 1
+```
 
-Browser:
+壓縮檔範例：
 
-- `renderGerberToCanvas(canvas, layers, frameOptions)`
-- `renderGerberToPng(canvas, layers, frameOptions, exportOptions)`
-- `renderGerberToPngStream(canvas, writable, layers, frameOptions, exportOptions)`
-- `createGerberRenderer(canvas, rendererOptions)`
-- `renderer.withFrame(frameOptions, callback)`
-- `renderer.renderLayer(layer, layerOptions)`
-- `renderer.renderLayers(layers, options)`
-- `renderer.exportPng(exportOptions)`
-- `renderer.exportPngStream(writable, exportOptions)`
-- `renderer.dispose()`
+```bash
+gerber-renderer board-gerbers.tar.gz \
+  --width 1600 \
+  --height 1000 \
+  --background '#05070c'
+```
 
-Node.js:
+CLI 選項：
 
-- `createNodeGerberRenderer(rendererOptions)`
-- `renderGerberToPngBuffer(layers, frameOptions, exportOptions, rendererOptions)`
-- `renderGerberToPngFile(outputPath, layers, frameOptions, exportOptions, rendererOptions)`
-- `renderGerberToPngStream(writable, layers, frameOptions, exportOptions, rendererOptions)`
-- `fileLayer(path, options)`
-- `renderer.loadLayer(layer, layerOptions)`
-- `renderer.loadLayers(layers, options)`
-- `renderer.exportPngFile(outputPath, exportOptions)`
+- `<input...>`：一個或多個 Gerber/drill 檔案，或 `.tar.gz`/`.tgz` 壓縮檔。多個檔案會按參數順序作為圖層渲染。
+- `-o, --output <path>`：PNG 輸出路徑。多個輸入時必填。父目錄必須已存在。
+- `--width <px>`：輸出寬度。預設 `1200`。
+- `--height <px>`：輸出高度。預設 `800`。
+- `--padding <px>`：自動適配視圖時使用的像素內邊距。預設 `0`。
+- `--background <color>`：hex 或 `rgb()`/`rgba()` 背景。不指定則為透明輸出。
+- `--alpha <0-1>`：全域圖層透明度。預設 `0.7`。
+- `--minimum-feature-pixels <px>`：線段/圓弧的最小渲染寬度。預設 `1`。
+- `--max-render-target-bytes <size>`：每個渲染目標的記憶體上限。接受位元組數或 `512m`、`2g` 這類後綴。
+- `--approx-region-arcs`：渲染前把 region 圓弧轉換為線段。
+- `--arc-quality <0|1|2>`：圓弧近似品質。預設 `1`。
+- `--flip-x`：水平鏡像輸出。
+- `--flip-y`：垂直鏡像輸出。
+- `--no-drill`：跳過 NC drill 圖層。
+- `--no-fit`：停用自動適配視圖。
+- `--skill`：列印面向 AI agent 的[套件使用說明](SKILL.md)。
+- `-h, --help`：列印 CLI 用法並結束。
 
-## 選項
+`--arc-quality` 主要在與 `--approx-region-arcs` 一起使用時有意義。取值 `0`、`1`、`2` 分別對應 low、normal、high。
 
-`frameOptions`:
+提供多個輸入檔案時，CLI 會為每個失敗的圖層列印警告，並繼續渲染其餘圖層。如果所有輸入都失敗，命令會以錯誤結束。
 
-- `width`, `height`: output 尺寸
-- `background`: output 背景，`null` 表示透明
-- `fit`, `padding`, `view`: view fitting 與 manual camera
-- `flipX`, `flipY`: 水平/垂直翻轉輸出
-- `preserveArcRegions`, `arcTessellationQuality`: region arc 處理方式
-- `minimumFeaturePixels`: line/arc 最小可見寬度
-- `renderDrills`: 是否渲染 NC drill overlay
-- `globalAlpha`: 未設定 layer alpha 時的預設透明度
-- `layerErrorMode`, `onLayerError`: layer 失敗處理
-
-`layerOptions`:
-
-- `color`, `alpha`
-- `offsetX`, `offsetY`
-- `kind`: 強制指定 `"gerber"` 或 `"drill"`
-- `name`: layer 顯示名稱
-
-`exportOptions`:
-
-- `background`
-- `maxBandBytes`: streamed PNG export 的 row-buffer budget
-
-`rendererOptions`:
-
-- `wasmModule`, `wasmModuleUrl`, `wasmBinaryUrl`, `wasmInitInput`
-- `contextAttributes`, `releaseContext`
-- Node 專用 `glesModule`, `glesModuleName`, `gl`
+當只提供一個輸入且省略 `--output` 時，CLI 會在輸入檔案旁邊寫出輸出檔案。`.gbr`、`.ger`、`.art`、`.gdo`、`.pho` 這類通用 Gerber 副檔名會被替換為 `.png`；圖層專用或未知副檔名會保留完整檔名並追加 `.png`。
 
 ## 授權
 
