@@ -2,13 +2,13 @@
 
 # wasm-gerber-viewer
 
-WASM/WebGL2-based Gerber file viewer for PCB visualization.
+用於 PCB 視覺化的 WASM/WebGL2 Gerber 檔案檢視器。
 
 ![WASM Gerber Viewer preview](demo/preview.png)
 
 <br/>
 
-**`English`** · [**`한국어`**](README.kr.md) · [**`简体中文`**](README.zh-Hans.md) · [**`繁體中文`**](README.zh-Hant.md)
+[**`English`**](README.md) · [**`한국어`**](README.kr.md) · [**`简体中文`**](README.zh-Hans.md) · **`繁體中文`**
 
 </div>
 
@@ -25,19 +25,19 @@ Website:
 - Performance test - Single region: [72K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fwasm-gerber-viewer.vercel.app%2Fdemo%2Fperformance-test-region-72K.gbr), [648K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-region-648K.gbr), [1.8M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-region-1.8M.gbr)
 - Performance test - Arc region: [1.3M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-arc-region-1.3M.gbr)
 
-## Features
+## 功能
 
-- High-performance rendering for large Gerber files (>10 MB)
-- WebGL2 hardware-accelerated rendering via WASM
-- RS-274X Gerber rendering support
-- NC drill overlay rendering support
-- Touch support for mobile devices
-- Multi-layer rendering with per-layer color and visibility control
-- Horizontal/vertical flip controls
-- Ruler measurements with mm/inch unit switching
-- Screenshot export with resolution options, including ruler overlays
+- 面向大型 Gerber 檔案（10 MB 以上）的高效能渲染
+- 基於 WASM 的 WebGL2 硬體加速渲染
+- 支援 RS-274X Gerber 渲染
+- 支援 NC drill 檔案疊加渲染
+- 支援行動裝置觸控操作
+- 多層渲染，支援每層顏色、透明度與可見性控制
+- 水平/垂直翻轉控制
+- 支援 mm/inch 切換的尺規測量
+- 支援解析度選項的截圖匯出，並可包含尺規覆蓋層
 
-## Quick Start
+## 快速開始
 
 <details>
 <summary>Bash</summary>
@@ -56,7 +56,7 @@ cd wasm-gerber-viewer-* &&
 python3 -m http.server 8000
 ```
 
-Open `http://localhost:8000` and upload Gerber files.
+開啟 `http://localhost:8000`，然後上傳 Gerber 檔案。
 
 </details>
 
@@ -78,18 +78,17 @@ Set-Location ((Get-ChildItem -Directory -Filter "wasm-gerber-viewer-*" | Select-
 python -m http.server 8000
 ```
 
-Open `http://localhost:8000` and upload Gerber files.
+開啟 `http://localhost:8000`，然後上傳 Gerber 檔案。
 
 </details>
 
-## Building
+## 建置
 
-Use this when you need to rebuild the WASM package locally instead of using the
-prebuilt release artifact.
+當你需要在本機重新建置 WASM 套件，而不是使用預先建置的 release artifact 時使用。
 
 Requirements:
 
-- **Rust stable** - install with [rustup](https://rustup.rs/)
+- **Rust stable** - 使用 [rustup](https://rustup.rs/) 安裝
 - **wasm-pack** - `cargo install wasm-pack`
 
 ```bash
@@ -97,79 +96,39 @@ rustup target add wasm32-unknown-unknown
 wasm-pack build wasm --target web --out-dir pkg --release
 ```
 
-## npm Package
+## npm 套件
 
-[wasm-gerber-renderer](packages/wasm-gerber-renderer/README.md)
+[wasm-gerber-renderer](packages/wasm-gerber-renderer/README.zh-Hant.md)
 
-JavaScript, Node.js, and CLI package for rendering Gerber files to PNG.
-Node.js and CLI rendering are supported via
-[`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2).
+用於在 JavaScript、Node.js 與 CLI 中將 Gerber 檔案渲染成 PNG 的套件。
+Node.js 與 CLI 渲染透過
+[`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支援。
 
-## Project Structure
+## 專案結構
 
 ```text
 wasm-gerber-viewer/
-├── index.html                         # Application shell
-├── css/
-│   └── style.css                      # UI styles
-├── js/
-│   ├── main.js                        # GerberViewer orchestration
-│   ├── config.js                      # Shared constants
-│   ├── diagnostics.js                 # Diagnostics panel
-│   ├── dom-elements.js                # DOM lookup helpers
-│   ├── drawer-controller.js           # Drawer interactions
-│   ├── file-utils.js                  # File and error helpers
-│   ├── layer-filters.js               # Layer type filters
-│   ├── layer-list.js                  # Layer list rendering
-│   ├── measurements.js                # Ruler measurements
-│   ├── notifications.js               # Toast notifications
-│   ├── screenshot-exporter.js         # Screenshot export
-│   ├── source-loader.js               # Local, archive, and URL loading
-│   └── viewport.js                    # Camera and viewport math
-├── vendor/                            # Vendored browser libraries
-├── packages/
-│   └── wasm-gerber-renderer/          # npm package and Node CLI
-├── wasm/
-│   ├── Cargo.toml                     # Rust crate manifest
-│   ├── pkg/                           # Generated wasm-pack output
-│   └── src/
-│       ├── lib.rs                     # WASM API entry point
-│       ├── drill.rs                   # Excellon/NC drill parser
-│       ├── parse_common.rs            # Shared parser number helpers
-│       ├── parser.rs                  # Gerber parser entry point
-│       ├── parser/                    # Parser modules
-│       │   ├── aperture.rs            # Apertures
-│       │   ├── aperture_macro.rs      # Aperture macros
-│       │   ├── geometry.rs            # Geometry helpers
-│       │   ├── state.rs               # Parser state
-│       │   └── tests.rs               # Parser tests
-│       ├── renderer.rs                # WebGL renderer
-│       ├── renderer/                  # Renderer modules
-│       │   ├── buffer.rs              # GPU resource structs
-│       │   ├── camera.rs              # Transform math
-│       │   └── shader.rs              # Shader programs
-│       ├── shape.rs                   # Geometry data model
-│       └── util.rs                    # Formatting and utility helpers
-├── demo/                              # Sample and performance Gerbers
-├── docs/                              # README assets
-├── scripts/
-│   └── vercel-build.sh                # WASM build script for CI/Vercel
-└── .github/workflows/
-    ├── build-and-deploy.yml           # Build, test, and deploy workflow
-    ├── renderer-compatibility.yml     # Renderer package smoke tests
-    └── release.yml                    # Manual release workflow
+├── index.html                         # 應用程式外殼
+├── css/                               # UI 樣式
+├── js/                                # 瀏覽器應用模組
+├── vendor/                            # vendored 瀏覽器函式庫
+├── packages/wasm-gerber-renderer/     # npm 套件與 Node CLI
+├── wasm/                              # Rust/WASM parser 與 renderer
+├── demo/                              # 範例與效能測試 Gerber
+├── docs/                              # README 資源
+├── scripts/                           # 建置腳本
+└── .github/workflows/                 # CI/CD workflow
 ```
 
-## Browser Requirements
+## 瀏覽器需求
 
-Modern browsers with WebGL2 support:
+支援 WebGL2 的現代瀏覽器：
 
 - Chrome 80+, Firefox 75+, Safari 15+, Edge 80+
 
 ## Source
 
-Sample archives are loaded from their upstream sources and are not bundled in
-this repository.
+範例 archive 會從其 upstream source 載入，未包含在本 repository 中。
 
 <details>
 <summary>Sample 1: KLP-5e ESP32 Sensor Board</summary>
@@ -201,6 +160,6 @@ this repository.
 
 </details>
 
-## License
+## 授權
 
 [MIT License](LICENSE)
