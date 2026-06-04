@@ -16,6 +16,161 @@ export const DEFAULT_BACKGROUND = null;
 export const DEFAULT_GLOBAL_ALPHA = 0.7;
 export const DEFAULT_MINIMUM_FEATURE_PIXELS = 1;
 export const DEFAULT_ARC_TESSELLATION_QUALITY = 1;
+export const LAYER_KIND_GERBER = "gerber";
+export const LAYER_KIND_DRILL = "drill";
+
+const DRILL_FILE_EXTENSIONS = new Set([".drl", ".nc", ".xnc", ".xln"]);
+const CSS_NAMED_COLORS = new Map([
+  ["aliceblue", [240, 248, 255, 255]],
+  ["antiquewhite", [250, 235, 215, 255]],
+  ["aqua", [0, 255, 255, 255]],
+  ["aquamarine", [127, 255, 212, 255]],
+  ["azure", [240, 255, 255, 255]],
+  ["beige", [245, 245, 220, 255]],
+  ["bisque", [255, 228, 196, 255]],
+  ["black", [0, 0, 0, 255]],
+  ["blanchedalmond", [255, 235, 205, 255]],
+  ["blue", [0, 0, 255, 255]],
+  ["blueviolet", [138, 43, 226, 255]],
+  ["brown", [165, 42, 42, 255]],
+  ["burlywood", [222, 184, 135, 255]],
+  ["cadetblue", [95, 158, 160, 255]],
+  ["chartreuse", [127, 255, 0, 255]],
+  ["chocolate", [210, 105, 30, 255]],
+  ["coral", [255, 127, 80, 255]],
+  ["cornflowerblue", [100, 149, 237, 255]],
+  ["cornsilk", [255, 248, 220, 255]],
+  ["crimson", [220, 20, 60, 255]],
+  ["cyan", [0, 255, 255, 255]],
+  ["darkblue", [0, 0, 139, 255]],
+  ["darkcyan", [0, 139, 139, 255]],
+  ["darkgoldenrod", [184, 134, 11, 255]],
+  ["darkgray", [169, 169, 169, 255]],
+  ["darkgreen", [0, 100, 0, 255]],
+  ["darkgrey", [169, 169, 169, 255]],
+  ["darkkhaki", [189, 183, 107, 255]],
+  ["darkmagenta", [139, 0, 139, 255]],
+  ["darkolivegreen", [85, 107, 47, 255]],
+  ["darkorange", [255, 140, 0, 255]],
+  ["darkorchid", [153, 50, 204, 255]],
+  ["darkred", [139, 0, 0, 255]],
+  ["darksalmon", [233, 150, 122, 255]],
+  ["darkseagreen", [143, 188, 143, 255]],
+  ["darkslateblue", [72, 61, 139, 255]],
+  ["darkslategray", [47, 79, 79, 255]],
+  ["darkslategrey", [47, 79, 79, 255]],
+  ["darkturquoise", [0, 206, 209, 255]],
+  ["darkviolet", [148, 0, 211, 255]],
+  ["deeppink", [255, 20, 147, 255]],
+  ["deepskyblue", [0, 191, 255, 255]],
+  ["dimgray", [105, 105, 105, 255]],
+  ["dimgrey", [105, 105, 105, 255]],
+  ["dodgerblue", [30, 144, 255, 255]],
+  ["firebrick", [178, 34, 34, 255]],
+  ["floralwhite", [255, 250, 240, 255]],
+  ["forestgreen", [34, 139, 34, 255]],
+  ["fuchsia", [255, 0, 255, 255]],
+  ["gainsboro", [220, 220, 220, 255]],
+  ["ghostwhite", [248, 248, 255, 255]],
+  ["gold", [255, 215, 0, 255]],
+  ["goldenrod", [218, 165, 32, 255]],
+  ["gray", [128, 128, 128, 255]],
+  ["green", [0, 128, 0, 255]],
+  ["greenyellow", [173, 255, 47, 255]],
+  ["grey", [128, 128, 128, 255]],
+  ["honeydew", [240, 255, 240, 255]],
+  ["hotpink", [255, 105, 180, 255]],
+  ["indianred", [205, 92, 92, 255]],
+  ["indigo", [75, 0, 130, 255]],
+  ["ivory", [255, 255, 240, 255]],
+  ["khaki", [240, 230, 140, 255]],
+  ["lavender", [230, 230, 250, 255]],
+  ["lavenderblush", [255, 240, 245, 255]],
+  ["lawngreen", [124, 252, 0, 255]],
+  ["lemonchiffon", [255, 250, 205, 255]],
+  ["lightblue", [173, 216, 230, 255]],
+  ["lightcoral", [240, 128, 128, 255]],
+  ["lightcyan", [224, 255, 255, 255]],
+  ["lightgoldenrodyellow", [250, 250, 210, 255]],
+  ["lightgray", [211, 211, 211, 255]],
+  ["lightgreen", [144, 238, 144, 255]],
+  ["lightgrey", [211, 211, 211, 255]],
+  ["lightpink", [255, 182, 193, 255]],
+  ["lightsalmon", [255, 160, 122, 255]],
+  ["lightseagreen", [32, 178, 170, 255]],
+  ["lightskyblue", [135, 206, 250, 255]],
+  ["lightslategray", [119, 136, 153, 255]],
+  ["lightslategrey", [119, 136, 153, 255]],
+  ["lightsteelblue", [176, 196, 222, 255]],
+  ["lightyellow", [255, 255, 224, 255]],
+  ["lime", [0, 255, 0, 255]],
+  ["limegreen", [50, 205, 50, 255]],
+  ["linen", [250, 240, 230, 255]],
+  ["magenta", [255, 0, 255, 255]],
+  ["maroon", [128, 0, 0, 255]],
+  ["mediumaquamarine", [102, 205, 170, 255]],
+  ["mediumblue", [0, 0, 205, 255]],
+  ["mediumorchid", [186, 85, 211, 255]],
+  ["mediumpurple", [147, 112, 219, 255]],
+  ["mediumseagreen", [60, 179, 113, 255]],
+  ["mediumslateblue", [123, 104, 238, 255]],
+  ["mediumspringgreen", [0, 250, 154, 255]],
+  ["mediumturquoise", [72, 209, 204, 255]],
+  ["mediumvioletred", [199, 21, 133, 255]],
+  ["midnightblue", [25, 25, 112, 255]],
+  ["mintcream", [245, 255, 250, 255]],
+  ["mistyrose", [255, 228, 225, 255]],
+  ["moccasin", [255, 228, 181, 255]],
+  ["navajowhite", [255, 222, 173, 255]],
+  ["navy", [0, 0, 128, 255]],
+  ["oldlace", [253, 245, 230, 255]],
+  ["olive", [128, 128, 0, 255]],
+  ["olivedrab", [107, 142, 35, 255]],
+  ["orange", [255, 165, 0, 255]],
+  ["orangered", [255, 69, 0, 255]],
+  ["orchid", [218, 112, 214, 255]],
+  ["palegoldenrod", [238, 232, 170, 255]],
+  ["palegreen", [152, 251, 152, 255]],
+  ["paleturquoise", [175, 238, 238, 255]],
+  ["palevioletred", [219, 112, 147, 255]],
+  ["papayawhip", [255, 239, 213, 255]],
+  ["peachpuff", [255, 218, 185, 255]],
+  ["peru", [205, 133, 63, 255]],
+  ["pink", [255, 192, 203, 255]],
+  ["plum", [221, 160, 221, 255]],
+  ["powderblue", [176, 224, 230, 255]],
+  ["purple", [128, 0, 128, 255]],
+  ["rebeccapurple", [102, 51, 153, 255]],
+  ["red", [255, 0, 0, 255]],
+  ["rosybrown", [188, 143, 143, 255]],
+  ["royalblue", [65, 105, 225, 255]],
+  ["saddlebrown", [139, 69, 19, 255]],
+  ["salmon", [250, 128, 114, 255]],
+  ["sandybrown", [244, 164, 96, 255]],
+  ["seagreen", [46, 139, 87, 255]],
+  ["seashell", [255, 245, 238, 255]],
+  ["sienna", [160, 82, 45, 255]],
+  ["silver", [192, 192, 192, 255]],
+  ["skyblue", [135, 206, 235, 255]],
+  ["slateblue", [106, 90, 205, 255]],
+  ["slategray", [112, 128, 144, 255]],
+  ["slategrey", [112, 128, 144, 255]],
+  ["snow", [255, 250, 250, 255]],
+  ["springgreen", [0, 255, 127, 255]],
+  ["steelblue", [70, 130, 180, 255]],
+  ["tan", [210, 180, 140, 255]],
+  ["teal", [0, 128, 128, 255]],
+  ["thistle", [216, 191, 216, 255]],
+  ["tomato", [255, 99, 71, 255]],
+  ["transparent", [0, 0, 0, 0]],
+  ["turquoise", [64, 224, 208, 255]],
+  ["violet", [238, 130, 238, 255]],
+  ["wheat", [245, 222, 179, 255]],
+  ["white", [255, 255, 255, 255]],
+  ["whitesmoke", [245, 245, 245, 255]],
+  ["yellow", [255, 255, 0, 255]],
+  ["yellowgreen", [154, 205, 50, 255]],
+]);
 
 export class FrameState {
   constructor(options, extra = {}) {
@@ -52,7 +207,10 @@ export class FrameState {
         name: layer.name,
         bounds: layer.bounds,
         color: layer.color,
-        alpha: resolveLayerAlpha(layer.alpha, globalAlpha),
+        alpha: resolveLayerAlpha(
+          layer.alpha,
+          isDrillLayerKind(layer.kind) ? 1 : globalAlpha,
+        ),
       })),
     };
   }
@@ -76,6 +234,7 @@ export function createBaseFrameOptions(frameOptions = {}) {
       frameOptions.minimumFeaturePixels,
       DEFAULT_MINIMUM_FEATURE_PIXELS,
     ),
+    renderDrills: frameOptions.renderDrills !== false,
     globalAlpha: numberOrDefault(frameOptions.globalAlpha, DEFAULT_GLOBAL_ALPHA),
     colors: DEFAULT_COLORS.map((color) => [...color]),
   };
@@ -147,6 +306,19 @@ export function addLayerToProcessor(processor, content, offsetX, offsetY) {
   return processor.add_layer(content);
 }
 
+export function addDrillLayerToProcessor(processor, content, offsetX, offsetY) {
+  if (offsetX !== 0 || offsetY !== 0) {
+    if (typeof processor.add_drill_layer_with_offset !== "function") {
+      throw new Error("Drill layer offsets require an updated WASM renderer.");
+    }
+    return processor.add_drill_layer_with_offset(content, offsetX, offsetY);
+  }
+  if (typeof processor.add_drill_layer !== "function") {
+    throw new Error("Drill rendering requires an updated WASM renderer.");
+  }
+  return processor.add_drill_layer(content);
+}
+
 export function normalizeParseOptions(options = {}) {
   return {
     preserveArcRegions: options.preserveArcRegions !== false,
@@ -178,8 +350,10 @@ export async function renderLayersBestEffort(renderer, layers, options = {}) {
 
   for (const layer of layers) {
     try {
-      await renderer.renderLayer(layer);
-      renderedCount += 1;
+      const layerId = await renderer.renderLayer(layer);
+      if (layerId != null) {
+        renderedCount += 1;
+      }
     } catch (error) {
       const failure = {
         layer,
@@ -215,7 +389,10 @@ export async function loadLayersBestEffort(renderer, layers, options = {}) {
 
   for (const layer of layers) {
     try {
-      preparedLayers.push(await renderer.loadLayer(layer, layerOptions));
+      const preparedLayer = await renderer.loadLayer(layer, layerOptions);
+      if (preparedLayer) {
+        preparedLayers.push(preparedLayer);
+      }
     } catch (error) {
       const failure = {
         layer,
@@ -265,6 +442,98 @@ export function normalizeLayer(layer, layerOptions = {}, options = {}) {
   return {
     source: layer,
     options: { ...layerOptions },
+  };
+}
+
+export function normalizeLayerKind(kind, source, name = "", content = "") {
+  if (kind == null || kind === "") {
+    return isDrillSource(source, name, content) ? LAYER_KIND_DRILL : LAYER_KIND_GERBER;
+  }
+
+  const normalized = String(kind).toLowerCase();
+  if (normalized === LAYER_KIND_GERBER || normalized === LAYER_KIND_DRILL) {
+    return normalized;
+  }
+  throw new TypeError("Layer kind must be 'gerber' or 'drill'.");
+}
+
+export function isDrillLayerKind(kind) {
+  return kind === LAYER_KIND_DRILL;
+}
+
+export function isDrillSource(source, name = "", content = "") {
+  const sourceName = getSourceName(source);
+  const hasDrillPath = (name && isDrillPath(name)) || (sourceName && isDrillPath(sourceName));
+  const hasAmbiguousDrdPath =
+    (name && isAmbiguousDrdPath(name)) || (sourceName && isAmbiguousDrdPath(sourceName));
+  const hasSourcePath = Boolean(sourceName || (name && hasFileExtension(name)));
+  return Boolean(
+    hasDrillPath || ((!hasSourcePath || hasAmbiguousDrdPath) && looksLikeDrillContent(content)),
+  );
+}
+
+export function isDrillPath(path) {
+  const normalized = String(path).toLowerCase();
+  const dotIndex = normalized.lastIndexOf(".");
+  return dotIndex >= 0 && DRILL_FILE_EXTENSIONS.has(normalized.slice(dotIndex));
+}
+
+function isAmbiguousDrdPath(path) {
+  const normalized = String(path).toLowerCase();
+  return normalized.endsWith(".drd");
+}
+
+function hasFileExtension(path) {
+  const fileName = fileBasename(String(path));
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex > 0 && dotIndex < fileName.length - 1;
+}
+
+export function looksLikeDrillContent(content) {
+  const lines = String(content ?? "")
+    .split(/\r?\n/, 80)
+    .map((line) => line.trim().toUpperCase());
+  if (lines.some((line) => line === "M48")) {
+    return true;
+  }
+  const hasToolDeclaration = lines.some((line) => /^T\d+C[+\-.\d]+/.test(line));
+  const hasDrillCommand = lines.some((line) =>
+    /^(METRIC|INCH|M71|M72|G05|G90|G91|ICI,ON|ICI,OFF)\b/.test(line),
+  );
+  return hasToolDeclaration && hasDrillCommand;
+}
+
+export function resolveDrillRenderColors(background) {
+  const { fill, hasBackground } = normalizeDrillFillColor(background);
+  return {
+    fill,
+    outline: [1 - fill[0], 1 - fill[1], 1 - fill[2]],
+    hasBackground,
+  };
+}
+
+export function parseDrillLayerPayload(wasmModule, content, offsetX, offsetY) {
+  if (typeof wasmModule.parse_drill_layer !== "function") {
+    throw new Error("Drill parsing requires an updated WASM renderer.");
+  }
+  const payload = wasmModule.parse_drill_layer(content, offsetX, offsetY);
+  const outlineLayer = payload?.outlineLayer;
+  const fillLayer = payload?.fillLayer;
+  if (!outlineLayer || !fillLayer) {
+    throw new Error("Drill parsing did not return renderable layers.");
+  }
+  const bounds = mergeBounds(
+    payloadBounds(outlineLayer),
+    payloadBounds(fillLayer),
+  );
+  if (!bounds) {
+    throw new Error("File does not contain valid drill data (no holes found)");
+  }
+  return {
+    outlineLayer,
+    fillLayer,
+    metadata: payload.metadata ?? null,
+    bounds,
   };
 }
 
@@ -330,6 +599,15 @@ export function getLayerFailureName(layer) {
     }
   }
   return getSourceName(layer) || "Layer";
+}
+
+export function payloadBounds(payload) {
+  const sublayers = Array.from(payload?.sublayers ?? []);
+  let bounds = null;
+  for (const sublayer of sublayers) {
+    bounds = mergeBounds(bounds, boundaryToPlainObject(sublayer.boundary));
+  }
+  return bounds;
 }
 
 export function resolveFrameView(frameOptions, bounds, width, height) {
@@ -416,6 +694,16 @@ export function parseColor(color, allowAlpha = false) {
 
   if (typeof color !== "string") {
     throw new TypeError("Color must be a CSS hex/rgb string or RGBA array.");
+  }
+
+  const namedColor = CSS_NAMED_COLORS.get(color.trim().toLowerCase());
+  if (namedColor) {
+    return [
+      namedColor[0],
+      namedColor[1],
+      namedColor[2],
+      allowAlpha ? namedColor[3] : 255,
+    ];
   }
 
   const hex = color.trim().match(/^#([0-9a-f]{3,8})$/i);
@@ -802,6 +1090,22 @@ function isLayerConfig(value) {
     !isBlob(value) &&
     !isArrayBufferLike(value)
   );
+}
+
+function normalizeDrillFillColor(background) {
+  if (background == null) {
+    return { fill: [0, 0, 0], hasBackground: false };
+  }
+  try {
+    const color = parseColor(background, true);
+    const fill = color.slice(0, 3).map((value) => value / 255);
+    if (color[3] !== 255) {
+      return { fill, hasBackground: false };
+    }
+    return { fill, hasBackground: true };
+  } catch (_error) {
+    return { fill: [0, 0, 0], hasBackground: false };
+  }
 }
 
 function isBlob(value) {
