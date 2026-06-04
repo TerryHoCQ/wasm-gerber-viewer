@@ -37,8 +37,9 @@ set -euo pipefail
 git clone https://github.com/dsafdsaf132/wasm-gerber-viewer.git
 cd wasm-gerber-viewer
 
+release_json="$(curl -fsSL https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases)"
 wasm_url="$(
-  curl -fsSL https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases |
+  printf '%s\n' "$release_json" |
   sed -n '/"browser_download_url": .*\/wasm-pkg-v.*\.tar\.gz"/ {
     s/.*"browser_download_url": *"\([^"]*\)".*/\1/p
     q
@@ -83,7 +84,13 @@ Invoke-WebRequest -Uri $asset.browser_download_url -OutFile wasm-pkg.tar.gz
 tar -xzf wasm-pkg.tar.gz -C wasm/pkg
 Remove-Item wasm-pkg.tar.gz
 
-py -3 -m http.server 8000
+if (Get-Command py -ErrorAction SilentlyContinue) {
+  py -3 -m http.server 8000
+} elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+  python3 -m http.server 8000
+} else {
+  python -m http.server 8000
+}
 ```
 
 Open `http://localhost:8000` and upload Gerber files.
