@@ -173,10 +173,9 @@ WebGL2를 지원하는 최신 브라우저가 필요합니다.
 
 - Chrome 80+, Firefox 75+, Safari 15+, Edge 80+
 
-## Source
+## 출처
 
-Sample archives are loaded from their upstream sources and are not bundled in
-this repository.
+샘플 압축 파일은 각 원본 출처에서 로드하며 이 저장소에 포함하지 않습니다.
 
 <details>
 <summary>Sample 1: KLP-5e ESP32 Sensor Board</summary>

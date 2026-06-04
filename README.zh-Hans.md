@@ -173,10 +173,9 @@ wasm-gerber-viewer/
 
 - Chrome 80+, Firefox 75+, Safari 15+, Edge 80+
 
-## Source
+## 示例来源
 
-Sample archives are loaded from their upstream sources and are not bundled in
-this repository.
+示例压缩包从各自的上游项目加载，不包含在本仓库中。
 
 <details>
 <summary>Sample 1: KLP-5e ESP32 Sensor Board</summary>
