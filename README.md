@@ -26,26 +26,84 @@ Website:
 - Ruler measurements with mm/inch unit switching
 - Screenshot export with resolution options, including ruler overlays
 
-## Requirements
-
-- **Rust stable** - install with [rustup](https://rustup.rs/)
-- **wasm-pack** - `cargo install wasm-pack`
-- **Python 3** or another static file server
-- **Modern WebGL2 browser** - Chrome, Firefox, Safari, or Edge
-
 ## Quick Start
 
+<details>
+<summary>Bash</summary>
+
 ```bash
+set -euo pipefail
+
 git clone https://github.com/dsafdsaf132/wasm-gerber-viewer.git
 cd wasm-gerber-viewer
 
-rustup target add wasm32-unknown-unknown
-wasm-pack build wasm --target web --out-dir pkg --release
+wasm_url="$(
+  curl -fsSL https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases |
+  sed -n '/"browser_download_url": .*\/wasm-pkg-v.*\.tar\.gz"/ {
+    s/.*"browser_download_url": *"\([^"]*\)".*/\1/p
+    q
+  }'
+)"
+test -n "$wasm_url"
+
+version="$(printf '%s\n' "$wasm_url" | sed -n 's#.*/download/\([^/]*\)/.*#\1#p')"
+test -n "$version"
+git checkout "$version"
+
+mkdir -p wasm/pkg
+curl -fsSL "$wasm_url" | tar -xz -C wasm/pkg
 
 python3 -m http.server 8000
 ```
 
 Open `http://localhost:8000` and upload Gerber files.
+
+</details>
+
+<details>
+<summary>PowerShell</summary>
+
+```powershell
+git clone https://github.com/dsafdsaf132/wasm-gerber-viewer.git
+Set-Location wasm-gerber-viewer
+
+$release = Invoke-RestMethod `
+  -Uri "https://api.github.com/repos/dsafdsaf132/wasm-gerber-viewer/releases"
+$asset = $release |
+  ForEach-Object { $_.assets } |
+  Where-Object { $_.name -match '^wasm-pkg-v.*\.tar\.gz$' } |
+  Select-Object -First 1
+if (-not $asset) { throw "No prebuilt WASM release asset found." }
+
+$version = $asset.browser_download_url -replace '^.*/download/([^/]+)/.*$', '$1'
+git checkout $version
+
+New-Item -ItemType Directory -Force wasm/pkg | Out-Null
+Invoke-WebRequest -Uri $asset.browser_download_url -OutFile wasm-pkg.tar.gz
+tar -xzf wasm-pkg.tar.gz -C wasm/pkg
+Remove-Item wasm-pkg.tar.gz
+
+py -3 -m http.server 8000
+```
+
+Open `http://localhost:8000` and upload Gerber files.
+
+</details>
+
+## Building
+
+Use this when you need to rebuild the WASM package locally instead of using the
+prebuilt release artifact.
+
+Requirements:
+
+- **Rust stable** - install with [rustup](https://rustup.rs/)
+- **wasm-pack** - `cargo install wasm-pack`
+
+```bash
+rustup target add wasm32-unknown-unknown
+wasm-pack build wasm --target web --out-dir pkg --release
+```
 
 ## npm Package
 
