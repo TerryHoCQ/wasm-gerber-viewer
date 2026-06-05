@@ -2,7 +2,7 @@
 
 # wasm-gerber-renderer
 
-[**`English`**](README.md) · [**`한국어`**](README.kr.md) · **`简体中文`** · [**`繁體中文`**](README.zh-Hant.md)
+[**`English`**](README.md) · **`简体中文`** · [**`繁體中文`**](README.zh-Hant.md) · [**`한국어`**](README.kr.md)
 
 </div>
 

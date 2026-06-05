@@ -8,7 +8,7 @@ PCB 시각화를 위한 WASM/WebGL2 기반 Gerber 파일 뷰어입니다.
 
 <br/>
 
-[**`English`**](README.md) · **`한국어`** · [**`简体中文`**](README.zh-Hans.md) · [**`繁體中文`**](README.zh-Hant.md)
+[**`English`**](README.md) · [**`简体中文`**](README.zh-Hans.md) · [**`繁體中文`**](README.zh-Hant.md) · **`한국어`**
 
 </div>
 
