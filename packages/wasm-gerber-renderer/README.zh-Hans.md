@@ -63,13 +63,14 @@ npm install @dsafdsaf132/wasm-gerber-renderer
 
 Node.js 和 CLI 渲染通过 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支持以下平台：
 
-- Linux x64
-- Linux arm64
-- macOS arm64
-- Windows x64
-- Windows arm64
-
-默认的 `node-gles-webgl2` ANGLE 预编译包不支持 macOS x64。
+| Platform      | CI                                                                 |
+| ------------- | ------------------------------------------------------------------ |
+| Linux x64     | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| Linux arm64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| macOS arm64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| macOS x64     | ![build only](https://img.shields.io/badge/CI-build%20only-yellow) |
+| Windows x64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| Windows arm64 | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
 
 ## 浏览器用法
 
@@ -180,7 +181,7 @@ type GerberNodeLayer =
 
 ## Node.js 用法
 
-使用 Node.js 入口前请安装 `node-gles-webgl2`。Node.js 和 CLI 渲染通过 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支持 Linux x64/arm64、macOS arm64 和 Windows x64/arm64。
+使用 Node.js 入口前请安装 `node-gles-webgl2`。Node.js 和 CLI 渲染通过 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) 支持 Linux x64/arm64、macOS arm64/x64 和 Windows x64/arm64。
 
 ```js
 import { fileLayer, renderGerberToPngFile } from "wasm-gerber-renderer/node";

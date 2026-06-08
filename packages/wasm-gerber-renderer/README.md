@@ -70,14 +70,14 @@ Browser rendering is platform independent and uses the caller's WebGL2 canvas.
 Node.js and CLI rendering are supported via
 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) on:
 
-- Linux x64
-- Linux arm64
-- macOS arm64
-- Windows x64
-- Windows arm64
-
-macOS x64 is not supported by the default `node-gles-webgl2` ANGLE prebuilt
-archive set.
+| Platform      | CI                                                                 |
+| ------------- | ------------------------------------------------------------------ |
+| Linux x64     | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| Linux arm64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| macOS arm64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| macOS x64     | ![build only](https://img.shields.io/badge/CI-build%20only-yellow) |
+| Windows x64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
+| Windows arm64 | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
 
 ## Browser Usage
 
@@ -198,7 +198,7 @@ rendering from the filesystem.
 Install `node-gles-webgl2` before using the Node.js entrypoint. Node.js and CLI
 rendering are supported via
 [`node-gles-webgl2`](https://github.com/dsafdsaf132/node-gles-webgl2) on Linux
-x64/arm64, macOS arm64, and Windows x64/arm64.
+x64/arm64, macOS arm64/x64, and Windows x64/arm64.
 
 ```js
 import { fileLayer, renderGerberToPngFile } from "wasm-gerber-renderer/node";
