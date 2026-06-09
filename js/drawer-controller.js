@@ -350,7 +350,7 @@ export class DrawerController {
     this.toggleButton.setAttribute("aria-expanded", String(!isCollapsed));
     this.toggleButton.title = label;
     this.toggleButton.replaceChildren();
-    const icon = document.createElement("i");
+    const icon = this.document.createElement("i");
     icon.setAttribute("data-lucide", iconName);
     this.toggleButton.appendChild(icon);
     this.refreshIcons?.();

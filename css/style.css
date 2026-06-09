@@ -196,6 +196,12 @@ button {
   color: #fecaca;
 }
 
+.icon-button.danger {
+  border-color: rgba(248, 113, 113, 0.58);
+  background: #7f1d1d;
+  color: #fee2e2;
+}
+
 .icon-button {
   width: 36px;
   height: 36px;
@@ -241,6 +247,11 @@ button {
   .tool-button.primary:hover {
     border-color: rgba(94, 234, 212, 0.7);
     background: #173b45;
+  }
+
+  .icon-button.danger:hover {
+    border-color: rgba(248, 113, 113, 0.8);
+    background: #991b1b;
   }
 }
 
@@ -779,6 +790,20 @@ button {
 .layer-item:hover {
   border-color: var(--line-strong);
   background: var(--surface-3);
+}
+
+.layer-empty-item {
+  cursor: pointer;
+}
+
+.layer-empty-item[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.layer-empty-item:focus-visible {
+  outline: 2px solid rgba(94, 234, 212, 0.72);
+  outline-offset: 2px;
 }
 
 .layer-color-picker {
@@ -1397,6 +1422,10 @@ button {
 
   .toolbar-divider {
     height: 24px;
+  }
+
+  #drawer-toggle {
+    display: none;
   }
 
   #workspace-status {

@@ -26,6 +26,7 @@ export function getViewerElements(documentRef = document) {
     viewerSurface,
     fileInput: requireElement(documentRef, "file-input"),
     selectFilesBtn: requireElement(documentRef, "select-files-btn"),
+    toolbarClearAllBtn: requireElement(documentRef, "toolbar-clear-all-btn"),
     emptyUploadBtn: requireElement(documentRef, "empty-upload-btn"),
     fitViewBtn: requireElement(documentRef, "fit-view-btn"),
     flipHorizontalBtn: requireElement(documentRef, "flip-horizontal-btn"),
