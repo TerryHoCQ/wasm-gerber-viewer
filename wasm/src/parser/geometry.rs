@@ -1,3 +1,7 @@
+use crate::interaction::{
+    aperture_name, aperture_type, feature_from_primitive_delta, FeatureKind, FeatureProperties,
+    InteractionFeature, InteractionLayer,
+};
 use crate::parse_common::{parse_coordinate_number, parse_g_code, read_word_value};
 use crate::parser::{Aperture, FormatSpec, ParserState, Polarity, PolarityLayer};
 use crate::shape::PathRegions;
@@ -965,7 +969,11 @@ pub fn convert_coordinate(
     )
     .unwrap_or(0.0);
 
-    result.is_finite().then_some(result).unwrap_or(0.0)
+    if result.is_finite() {
+        result
+    } else {
+        0.0
+    }
 }
 
 /// Flash aperture at given position without Step and Repeat
@@ -1208,6 +1216,84 @@ fn flash_block_aperture(
     Ok(())
 }
 
+fn record_block_flash_interaction(
+    interaction_layer: Option<&mut InteractionLayer>,
+    block_layers: &[PolarityLayer],
+    aperture_code: &str,
+    aperture: &Aperture,
+    state: &ParserState,
+    x: f32,
+    y: f32,
+) -> Result<(), String> {
+    let Some(interaction_layer) = interaction_layer else {
+        return Ok(());
+    };
+
+    let properties = InteractionFeature::gerber_properties_with_transform(
+        aperture,
+        state.layer_scale,
+        state.mirror_x,
+        state.mirror_y,
+        state.layer_rotation,
+    );
+    for sy in 0..state.sr_y {
+        for sx in 0..state.sr_x {
+            let flash_x = x + sx as f32 * state.sr_i;
+            let flash_y = y + sy as f32 * state.sr_j;
+
+            for block_layer in block_layers {
+                let mut transformed = Vec::new();
+                try_reserve_primitives(
+                    &mut transformed,
+                    block_layer.primitives.len(),
+                    "aperture block interaction",
+                )?;
+
+                for primitive in &block_layer.primitives {
+                    transformed.push(transform_primitive_for_flash(
+                        primitive,
+                        flash_x,
+                        flash_y,
+                        state.layer_scale,
+                        state.mirror_x,
+                        state.mirror_y,
+                        state.layer_rotation,
+                    ));
+                }
+
+                let mut transformed_path_regions = block_layer.path_regions.clone();
+                transformed_path_regions.transform_for_flash(
+                    state.layer_scale,
+                    state.mirror_x,
+                    state.mirror_y,
+                    state.layer_rotation,
+                    flash_x,
+                    flash_y,
+                );
+
+                if transformed.is_empty() && !transformed_path_regions.has_geometry() {
+                    continue;
+                }
+
+                if let Some(feature) = InteractionFeature::from_geometry(
+                    FeatureKind::Flash,
+                    aperture_name(aperture_code),
+                    Some(aperture_type(aperture)),
+                    aperture.macro_name.clone(),
+                    toggled_block_polarity(block_layer.polarity, state.polarity),
+                    transformed,
+                    transformed_path_regions,
+                    properties.clone(),
+                ) {
+                    interaction_layer.push(feature);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Flash aperture at given position - add all primitives of the aperture to the position
 pub fn flash_aperture(
     state: &ParserState,
@@ -1283,184 +1369,181 @@ pub fn execute_interpolation(
     let start_y = state.y;
 
     if let Some(aperture) = apertures.get(&state.current_aperture) {
-        match state.interpolation_mode.as_str() {
-            "linear" | "linear_x10" | "linear_x01" | "linear_x001" => {
-                // Draw line with Step and Repeat
-                for sy in 0..state.sr_y {
-                    for sx in 0..state.sr_x {
-                        let offset_x = sx as f32 * state.sr_i;
-                        let offset_y = sy as f32 * state.sr_j;
-                        let sr_start_x = start_x + offset_x;
-                        let sr_start_y = start_y + offset_y;
-                        let sr_end_x = end_x + offset_x;
-                        let sr_end_y = end_y + offset_y;
-
-                        if points_coincide(sr_start_x, sr_start_y, sr_end_x, sr_end_y) {
-                            flash_aperture_no_sr(
-                                aperture,
-                                primitives,
-                                sr_start_x,
-                                sr_start_y,
-                                state.layer_scale,
-                                state.mirror_x,
-                                state.mirror_y,
-                                state.layer_rotation,
-                            )?;
-                            continue;
-                        }
-
-                        // RS-274X draw objects can only be created with a solid standard circle
-                        // aperture. Non-zero-length draws with other apertures are non-image.
-                        if !aperture.is_solid_circle {
-                            continue;
-                        }
-
-                        // Flash aperture at start point (no SR since we're already in SR loop)
-                        flash_aperture_no_sr(
-                            aperture,
-                            primitives,
-                            sr_start_x,
-                            sr_start_y,
-                            state.layer_scale,
-                            state.mirror_x,
-                            state.mirror_y,
-                            state.layer_rotation,
-                        )?;
-
-                        // Store line body separately from the two round cap flashes so
-                        // the renderer can keep it instanced and clamp screen thickness.
-                        let diameter = aperture.radius * 2.0 * state.layer_scale;
-                        if let Some(line) =
-                            line_to_body(sr_start_x, sr_start_y, sr_end_x, sr_end_y, diameter, 1.0)
-                        {
-                            try_reserve_primitives(primitives, 1, "linear interpolation")?;
-                            primitives.push(line);
-                        }
-
-                        // Flash aperture at end point (no SR since we're already in SR loop)
-                        flash_aperture_no_sr(
-                            aperture,
-                            primitives,
-                            sr_end_x,
-                            sr_end_y,
-                            state.layer_scale,
-                            state.mirror_x,
-                            state.mirror_y,
-                            state.layer_rotation,
-                        )?;
-                    }
-                }
+        for sy in 0..state.sr_y {
+            for sx in 0..state.sr_x {
+                let offset_x = sx as f32 * state.sr_i;
+                let offset_y = sy as f32 * state.sr_j;
+                append_interpolation_no_sr(
+                    state,
+                    aperture,
+                    primitives,
+                    start_x + offset_x,
+                    start_y + offset_y,
+                    end_x + offset_x,
+                    end_y + offset_y,
+                    i,
+                    j,
+                )?;
             }
-            "clockwise" | "counterclockwise" => {
-                // Draw arc with Step and Repeat
-                for sy in 0..state.sr_y {
-                    for sx in 0..state.sr_x {
-                        let offset_x = sx as f32 * state.sr_i;
-                        let offset_y = sy as f32 * state.sr_j;
-                        let sr_start_x = start_x + offset_x;
-                        let sr_start_y = start_y + offset_y;
-                        let sr_end_x = end_x + offset_x;
-                        let sr_end_y = end_y + offset_y;
-
-                        if points_coincide(sr_start_x, sr_start_y, sr_end_x, sr_end_y)
-                            && !arc_center_offset_present(i, j)
-                        {
-                            flash_aperture_no_sr(
-                                aperture,
-                                primitives,
-                                sr_start_x,
-                                sr_start_y,
-                                state.layer_scale,
-                                state.mirror_x,
-                                state.mirror_y,
-                                state.layer_rotation,
-                            )?;
-                            continue;
-                        }
-
-                        // RS-274X arc objects can only be created with a solid standard circle
-                        // aperture. Non-zero-length arcs with other apertures are non-image.
-                        if !aperture.is_solid_circle {
-                            continue;
-                        }
-
-                        if let Some((center_x, center_y, radius, start_angle, sweep_angle)) =
-                            calculate_arc_parameters(
-                                state, sr_start_x, sr_start_y, sr_end_x, sr_end_y, i, j,
-                            )
-                        {
-                            let thickness = aperture.radius * 2.0 * state.layer_scale;
-                            let end_angle = start_angle + sweep_angle;
-
-                            let cap_start_x = center_x + radius * start_angle.cos();
-                            let cap_start_y = center_y + radius * start_angle.sin();
-                            let cap_end_x = center_x + radius * end_angle.cos();
-                            let cap_end_y = center_y + radius * end_angle.sin();
-
-                            // Flash aperture at rendered arc start point.
-                            flash_aperture_no_sr(
-                                aperture,
-                                primitives,
-                                cap_start_x,
-                                cap_start_y,
-                                state.layer_scale,
-                                state.mirror_x,
-                                state.mirror_y,
-                                state.layer_rotation,
-                            )?;
-
-                            // Add Arc primitive
-                            try_reserve_primitives(primitives, 1, "arc interpolation")?;
-                            primitives.push(Primitive::Arc {
-                                x: center_x,
-                                y: center_y,
-                                radius,
-                                start_angle,
-                                end_angle: start_angle + sweep_angle,
-                                thickness,
-                                exposure: 1.0,
-                            });
-
-                            // Flash aperture at rendered arc end point.
-                            flash_aperture_no_sr(
-                                aperture,
-                                primitives,
-                                cap_end_x,
-                                cap_end_y,
-                                state.layer_scale,
-                                state.mirror_x,
-                                state.mirror_y,
-                                state.layer_rotation,
-                            )?;
-                        } else {
-                            flash_aperture_no_sr(
-                                aperture,
-                                primitives,
-                                sr_start_x,
-                                sr_start_y,
-                                state.layer_scale,
-                                state.mirror_x,
-                                state.mirror_y,
-                                state.layer_rotation,
-                            )?;
-                            if !points_coincide(sr_start_x, sr_start_y, sr_end_x, sr_end_y) {
-                                flash_aperture_no_sr(
-                                    aperture,
-                                    primitives,
-                                    sr_end_x,
-                                    sr_end_y,
-                                    state.layer_scale,
-                                    state.mirror_x,
-                                    state.mirror_y,
-                                    state.layer_rotation,
-                                )?;
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
+    }
+
+    Ok(())
+}
+
+fn append_interpolation_no_sr(
+    state: &ParserState,
+    aperture: &Aperture,
+    primitives: &mut Vec<Primitive>,
+    start_x: f32,
+    start_y: f32,
+    end_x: f32,
+    end_y: f32,
+    i: f32,
+    j: f32,
+) -> Result<(), String> {
+    match state.interpolation_mode.as_str() {
+        "linear" | "linear_x10" | "linear_x01" | "linear_x001" => {
+            if points_coincide(start_x, start_y, end_x, end_y) {
+                flash_aperture_no_sr(
+                    aperture,
+                    primitives,
+                    start_x,
+                    start_y,
+                    state.layer_scale,
+                    state.mirror_x,
+                    state.mirror_y,
+                    state.layer_rotation,
+                )?;
+                return Ok(());
+            }
+
+            // RS-274X draw objects can only be created with a solid standard circle
+            // aperture. Non-zero-length draws with other apertures are non-image.
+            if !aperture.is_solid_circle {
+                return Ok(());
+            }
+
+            flash_aperture_no_sr(
+                aperture,
+                primitives,
+                start_x,
+                start_y,
+                state.layer_scale,
+                state.mirror_x,
+                state.mirror_y,
+                state.layer_rotation,
+            )?;
+
+            // Store line body separately from the two round cap flashes so
+            // the renderer can keep it instanced and clamp screen thickness.
+            let diameter = aperture.radius * 2.0 * state.layer_scale;
+            if let Some(line) = line_to_body(start_x, start_y, end_x, end_y, diameter, 1.0) {
+                try_reserve_primitives(primitives, 1, "linear interpolation")?;
+                primitives.push(line);
+            }
+
+            flash_aperture_no_sr(
+                aperture,
+                primitives,
+                end_x,
+                end_y,
+                state.layer_scale,
+                state.mirror_x,
+                state.mirror_y,
+                state.layer_rotation,
+            )?;
+        }
+        "clockwise" | "counterclockwise" => {
+            if points_coincide(start_x, start_y, end_x, end_y) && !arc_center_offset_present(i, j) {
+                flash_aperture_no_sr(
+                    aperture,
+                    primitives,
+                    start_x,
+                    start_y,
+                    state.layer_scale,
+                    state.mirror_x,
+                    state.mirror_y,
+                    state.layer_rotation,
+                )?;
+                return Ok(());
+            }
+
+            // RS-274X arc objects can only be created with a solid standard circle
+            // aperture. Non-zero-length arcs with other apertures are non-image.
+            if !aperture.is_solid_circle {
+                return Ok(());
+            }
+
+            if let Some((center_x, center_y, radius, start_angle, sweep_angle)) =
+                calculate_arc_parameters(state, start_x, start_y, end_x, end_y, i, j)
+            {
+                let thickness = aperture.radius * 2.0 * state.layer_scale;
+                let end_angle = start_angle + sweep_angle;
+
+                let cap_start_x = center_x + radius * start_angle.cos();
+                let cap_start_y = center_y + radius * start_angle.sin();
+                let cap_end_x = center_x + radius * end_angle.cos();
+                let cap_end_y = center_y + radius * end_angle.sin();
+
+                flash_aperture_no_sr(
+                    aperture,
+                    primitives,
+                    cap_start_x,
+                    cap_start_y,
+                    state.layer_scale,
+                    state.mirror_x,
+                    state.mirror_y,
+                    state.layer_rotation,
+                )?;
+
+                try_reserve_primitives(primitives, 1, "arc interpolation")?;
+                primitives.push(Primitive::Arc {
+                    x: center_x,
+                    y: center_y,
+                    radius,
+                    start_angle,
+                    end_angle: start_angle + sweep_angle,
+                    thickness,
+                    exposure: 1.0,
+                });
+
+                flash_aperture_no_sr(
+                    aperture,
+                    primitives,
+                    cap_end_x,
+                    cap_end_y,
+                    state.layer_scale,
+                    state.mirror_x,
+                    state.mirror_y,
+                    state.layer_rotation,
+                )?;
+            } else {
+                flash_aperture_no_sr(
+                    aperture,
+                    primitives,
+                    start_x,
+                    start_y,
+                    state.layer_scale,
+                    state.mirror_x,
+                    state.mirror_y,
+                    state.layer_rotation,
+                )?;
+                if !points_coincide(start_x, start_y, end_x, end_y) {
+                    flash_aperture_no_sr(
+                        aperture,
+                        primitives,
+                        end_x,
+                        end_y,
+                        state.layer_scale,
+                        state.mirror_x,
+                        state.mirror_y,
+                        state.layer_rotation,
+                    )?;
+                }
+            }
+        }
+        _ => {}
     }
 
     Ok(())
@@ -1667,6 +1750,8 @@ fn region_arc_tessellation_max_angle_step(quality: u32) -> f32 {
 pub fn build_path_regions(
     region_contours: &[RegionContour],
     state: &ParserState,
+    arc_tessellation_quality: u32,
+    collect_pick_contours: bool,
 ) -> Result<PathRegions, String> {
     let mut path_regions = PathRegions::empty();
 
@@ -1674,7 +1759,14 @@ pub fn build_path_regions(
         for sx in 0..state.sr_x {
             let offset_x = sx as f32 * state.sr_i;
             let offset_y = sy as f32 * state.sr_j;
-            append_path_region(&mut path_regions, region_contours, offset_x, offset_y)?;
+            append_path_region(
+                &mut path_regions,
+                region_contours,
+                offset_x,
+                offset_y,
+                arc_tessellation_quality,
+                collect_pick_contours,
+            )?;
         }
     }
 
@@ -1686,6 +1778,8 @@ fn append_path_region(
     region_contours: &[RegionContour],
     offset_x: f32,
     offset_y: f32,
+    arc_tessellation_quality: u32,
+    collect_pick_contours: bool,
 ) -> Result<(), String> {
     let Some((min_x, max_x, min_y, max_y)) =
         path_region_bounds(region_contours, offset_x, offset_y)
@@ -1712,6 +1806,15 @@ fn append_path_region(
         append_contour_segments(path_regions, contour, reference, offset_x, offset_y)?;
     }
 
+    if collect_pick_contours {
+        path_regions.pick_contours.push(path_region_pick_contours(
+            region_contours,
+            offset_x,
+            offset_y,
+            arc_tessellation_quality,
+        )?);
+    }
+
     path_regions
         .wedge_vertex_offsets
         .push((path_regions.wedge_vertices.len() / 2) as u32);
@@ -1720,6 +1823,49 @@ fn append_path_region(
         .push((path_regions.sector_vertices.len() / 7) as u32);
 
     Ok(())
+}
+
+fn path_region_pick_contours(
+    region_contours: &[RegionContour],
+    offset_x: f32,
+    offset_y: f32,
+    arc_tessellation_quality: u32,
+) -> Result<Vec<Vec<[f32; 2]>>, String> {
+    let flattened_contours;
+    let contour_iter: Box<dyn Iterator<Item = &[[f32; 2]]> + '_> =
+        if region_contours_have_arcs(region_contours) {
+            flattened_contours =
+                flatten_region_contours(region_contours, arc_tessellation_quality)?;
+            Box::new(flattened_contours.iter().map(Vec::as_slice))
+        } else {
+            Box::new(region_contours_to_point_slices(region_contours))
+        };
+
+    let mut contours = Vec::new();
+    try_reserve_values(
+        &mut contours,
+        region_contours.len(),
+        "path region pick contours",
+    )?;
+    for contour in contour_iter {
+        if contour.len() < 3 {
+            continue;
+        }
+        let mut transformed = Vec::new();
+        try_reserve_values(
+            &mut transformed,
+            contour.len(),
+            "path region pick contour points",
+        )?;
+        transformed.extend(
+            contour
+                .iter()
+                .map(|point| [point[0] + offset_x, point[1] + offset_y]),
+        );
+        contours.push(transformed);
+    }
+
+    Ok(contours)
 }
 
 fn append_contour_segments(
@@ -2085,6 +2231,224 @@ fn append_region_segment(
     Ok(())
 }
 
+fn record_primitive_delta(
+    interaction_layer: Option<&mut InteractionLayer>,
+    kind: FeatureKind,
+    aperture_code: &str,
+    aperture: Option<&Aperture>,
+    polarity: Polarity,
+    primitives: &[Primitive],
+    start_index: usize,
+    layer_scale: f32,
+    mirror_x: bool,
+    mirror_y: bool,
+    layer_rotation: f32,
+    arc_command: Option<&str>,
+) {
+    let Some(interaction_layer) = interaction_layer else {
+        return;
+    };
+    if start_index >= primitives.len() {
+        return;
+    }
+
+    let delta = &primitives[start_index..];
+    let feature = if let Some(aperture) = aperture {
+        let mut properties = InteractionFeature::gerber_properties_with_transform(
+            aperture,
+            layer_scale,
+            mirror_x,
+            mirror_y,
+            layer_rotation,
+        );
+        properties.arc_command = arc_command.map(str::to_string);
+        feature_from_primitive_delta(kind, aperture_code, aperture, polarity, delta, properties)
+    } else {
+        let properties = FeatureProperties {
+            arc_command: arc_command.map(str::to_string),
+            ..FeatureProperties::default()
+        };
+        InteractionFeature::from_primitives(
+            kind,
+            aperture_name(aperture_code),
+            aperture.map(aperture_type),
+            None,
+            polarity,
+            delta.to_vec(),
+            properties,
+        )
+    };
+
+    if let Some(feature) = feature {
+        interaction_layer.push(feature);
+    }
+}
+
+fn record_flash_interactions(
+    interaction_layer: Option<&mut InteractionLayer>,
+    aperture_code: &str,
+    aperture: &Aperture,
+    state: &ParserState,
+    x: f32,
+    y: f32,
+) -> Result<(), String> {
+    let Some(interaction_layer) = interaction_layer else {
+        return Ok(());
+    };
+
+    let properties = InteractionFeature::gerber_properties_with_transform(
+        aperture,
+        state.layer_scale,
+        state.mirror_x,
+        state.mirror_y,
+        state.layer_rotation,
+    );
+    for sy in 0..state.sr_y {
+        for sx in 0..state.sr_x {
+            let flash_x = x + sx as f32 * state.sr_i;
+            let flash_y = y + sy as f32 * state.sr_j;
+            let mut primitives = Vec::new();
+            flash_aperture_no_sr(
+                aperture,
+                &mut primitives,
+                flash_x,
+                flash_y,
+                state.layer_scale,
+                state.mirror_x,
+                state.mirror_y,
+                state.layer_rotation,
+            )?;
+
+            if let Some(feature) = feature_from_primitive_delta(
+                FeatureKind::Flash,
+                aperture_code,
+                aperture,
+                state.polarity,
+                &primitives,
+                properties.clone(),
+            ) {
+                interaction_layer.push(feature);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn record_interpolation_interactions(
+    interaction_layer: Option<&mut InteractionLayer>,
+    kind: FeatureKind,
+    aperture_code: &str,
+    aperture: Option<&Aperture>,
+    state: &ParserState,
+    primitives: &[Primitive],
+    start_index: usize,
+    end_x: f32,
+    end_y: f32,
+    i: f32,
+    j: f32,
+    arc_command: Option<&str>,
+) -> Result<(), String> {
+    if state.sr_x <= 1 && state.sr_y <= 1 {
+        record_primitive_delta(
+            interaction_layer,
+            kind,
+            aperture_code,
+            aperture,
+            state.polarity,
+            primitives,
+            start_index,
+            state.layer_scale,
+            state.mirror_x,
+            state.mirror_y,
+            state.layer_rotation,
+            arc_command,
+        );
+        return Ok(());
+    }
+
+    let Some(interaction_layer) = interaction_layer else {
+        return Ok(());
+    };
+    let Some(aperture) = aperture else {
+        return Ok(());
+    };
+
+    let mut properties = InteractionFeature::gerber_properties_with_transform(
+        aperture,
+        state.layer_scale,
+        state.mirror_x,
+        state.mirror_y,
+        state.layer_rotation,
+    );
+    properties.arc_command = arc_command.map(str::to_string);
+
+    for sy in 0..state.sr_y {
+        for sx in 0..state.sr_x {
+            let offset_x = sx as f32 * state.sr_i;
+            let offset_y = sy as f32 * state.sr_j;
+            let mut copy_primitives = Vec::new();
+            append_interpolation_no_sr(
+                state,
+                aperture,
+                &mut copy_primitives,
+                state.x + offset_x,
+                state.y + offset_y,
+                end_x + offset_x,
+                end_y + offset_y,
+                i,
+                j,
+            )?;
+
+            if let Some(feature) = feature_from_primitive_delta(
+                kind.clone(),
+                aperture_code,
+                aperture,
+                state.polarity,
+                &copy_primitives,
+                properties.clone(),
+            ) {
+                interaction_layer.push(feature);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn interpolation_feature_kind(
+    state: &ParserState,
+    end_x: f32,
+    end_y: f32,
+    i: f32,
+    j: f32,
+) -> (FeatureKind, Option<&'static str>) {
+    let is_arc =
+        state.interpolation_mode == "clockwise" || state.interpolation_mode == "counterclockwise";
+    if points_coincide(state.x, state.y, end_x, end_y)
+        && (!is_arc || !arc_center_offset_present(i, j))
+    {
+        return (FeatureKind::Flash, None);
+    }
+
+    if is_arc {
+        (
+            FeatureKind::ArcDraw,
+            arc_command_for_interpolation(&state.interpolation_mode),
+        )
+    } else {
+        (FeatureKind::Draw, None)
+    }
+}
+
+fn arc_command_for_interpolation(interpolation_mode: &str) -> Option<&'static str> {
+    match interpolation_mode {
+        "clockwise" => Some("G02"),
+        "counterclockwise" => Some("G03"),
+        _ => None,
+    }
+}
+
 /// Parse graphic commands - process G/D/XY codes
 /// Example: G01X1000Y2000D01* (draw line), X1000Y2000D03* (flash), etc.
 pub fn parse_graphic_command(
@@ -2095,8 +2459,10 @@ pub fn parse_graphic_command(
     region_contours: &mut Vec<RegionContour>,
     path_regions: &mut PathRegions,
     polarity_layers: &mut Vec<PolarityLayer>,
+    mut interaction_layer: Option<&mut InteractionLayer>,
     preserve_arc_regions: bool,
     arc_tessellation_quality: u32,
+    collect_interactions: bool,
 ) -> Result<(), String> {
     let clean_line = line.trim_end_matches('*');
 
@@ -2144,9 +2510,30 @@ pub fn parse_graphic_command(
 
                     if preserve_arc_regions && region_contours_have_arcs(region_contours) {
                         flush_primitives_to_layer(primitives, state.polarity, polarity_layers)?;
-                        path_regions.append(build_path_regions(region_contours, state)?);
+                        let region_path_regions = build_path_regions(
+                            region_contours,
+                            state,
+                            arc_tessellation_quality,
+                            collect_interactions,
+                        )?;
+                        path_regions.append(region_path_regions.clone());
+                        if let Some(interaction_layer) = interaction_layer.as_deref_mut() {
+                            if let Some(feature) = InteractionFeature::from_geometry(
+                                FeatureKind::Region,
+                                None,
+                                None,
+                                None,
+                                state.polarity,
+                                Vec::new(),
+                                region_path_regions,
+                                FeatureProperties::default(),
+                            ) {
+                                interaction_layer.push(feature);
+                            }
+                        }
                     } else {
                         flush_path_regions_to_layer(path_regions, state.polarity, polarity_layers)?;
+                        let primitive_start = primitives.len();
                         // Triangulate region and add to primitives with Step and Repeat
                         // Regions are always positive (add material)
                         let flattened_contours;
@@ -2198,6 +2585,20 @@ pub fn parse_graphic_command(
                                 }
                             }
                         }
+                        record_primitive_delta(
+                            interaction_layer.as_deref_mut(),
+                            FeatureKind::Region,
+                            "",
+                            None,
+                            state.polarity,
+                            primitives,
+                            primitive_start,
+                            state.layer_scale,
+                            state.mirror_x,
+                            state.mirror_y,
+                            state.layer_rotation,
+                            None,
+                        );
                     }
 
                     region_contours.clear();
@@ -2304,7 +2705,24 @@ pub fn parse_graphic_command(
                         }
                     } else {
                         flush_path_regions_to_layer(path_regions, state.polarity, polarity_layers)?;
+                        let primitive_start = primitives.len();
                         execute_interpolation(state, apertures, primitives, x, y, i, j)?;
+                        let aperture = apertures.get(&state.current_aperture);
+                        let (kind, arc_command) = interpolation_feature_kind(state, x, y, i, j);
+                        record_interpolation_interactions(
+                            interaction_layer.as_deref_mut(),
+                            kind,
+                            &state.current_aperture,
+                            aperture,
+                            state,
+                            primitives,
+                            primitive_start,
+                            x,
+                            y,
+                            i,
+                            j,
+                            arc_command,
+                        )?;
                     }
                 }
                 2 => {
@@ -2330,6 +2748,29 @@ pub fn parse_graphic_command(
                     // D03: Flash aperture at current position
                     flush_path_regions_to_layer(path_regions, state.polarity, polarity_layers)?;
                     flash_aperture(state, apertures, primitives, polarity_layers, x, y)?;
+                    let aperture = apertures.get(&state.current_aperture);
+                    if let Some(aperture) = aperture {
+                        if let Some(block_layers) = aperture.block_layers.as_ref() {
+                            record_block_flash_interaction(
+                                interaction_layer.as_deref_mut(),
+                                block_layers,
+                                &state.current_aperture,
+                                aperture,
+                                state,
+                                x,
+                                y,
+                            )?;
+                        } else {
+                            record_flash_interactions(
+                                interaction_layer.as_deref_mut(),
+                                &state.current_aperture,
+                                aperture,
+                                state,
+                                x,
+                                y,
+                            )?;
+                        }
+                    }
                 }
                 _ if d_code >= 10 => {
                     // D10+: Aperture selection
@@ -2346,7 +2787,24 @@ pub fn parse_graphic_command(
             }
         } else {
             flush_path_regions_to_layer(path_regions, state.polarity, polarity_layers)?;
+            let primitive_start = primitives.len();
             execute_interpolation(state, apertures, primitives, x, y, i, j)?;
+            let aperture = apertures.get(&state.current_aperture);
+            let (kind, arc_command) = interpolation_feature_kind(state, x, y, i, j);
+            record_interpolation_interactions(
+                interaction_layer,
+                kind,
+                &state.current_aperture,
+                aperture,
+                state,
+                primitives,
+                primitive_start,
+                x,
+                y,
+                i,
+                j,
+                arc_command,
+            )?;
         }
     } else {
         // No drawing operation
