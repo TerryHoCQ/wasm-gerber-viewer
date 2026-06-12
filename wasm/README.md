@@ -252,13 +252,17 @@ flowchart TD
   DirtyCheck -->|No| Reuse["Reuse cached layer FBO"]
   DirtyCheck -->|Yes| BindFbo["Bind layer FBO and clear to transparent"]
   BindFbo --> Geometry["render_layer_geometry"]
-  Geometry --> Positive["Positive polarity writes alpha"]
-  Geometry --> Negative["Negative polarity erases alpha"]
-  Positive --> Cache["Mark FBO clean and cache transform"]
-  Negative --> Cache
+  Geometry --> BufferCache{"VBO/VAO cache ready?"}
+  BufferCache -->|No| Upload["Create WebGlBuffer data and VAO bindings"]
+  BufferCache -->|Yes| Draw["Bind VAO and draw geometry"]
+  Upload --> Draw
+  Draw --> Positive["Positive polarity writes alpha"]
+  Draw --> Negative["Negative polarity erases alpha"]
+  Positive --> FboCache["Mark FBO clean and cache transform"]
+  Negative --> FboCache
 
   Reuse --> Composite["composite_layers_to_target"]
-  Cache --> Composite
+  FboCache --> Composite
   Composite --> TextureShader["Texture shader applies layer color and alpha"]
   TextureShader --> BlendMode{"Blend mode"}
   BlendMode -->|0| Additive["Additive blend"]
@@ -287,8 +291,8 @@ Initialization paths:
 - `GerberProcessor::init_with_size(gl, width, height)` ->
   `Renderer::new_headless(...)`
 
-The renderer owns shader programs, shared buffers, layer FBOs, geometry buffer
-caches, and highlight resources.
+The renderer owns shader programs, shared GPU buffers, layer FBOs, geometry
+buffer/VAO caches, and highlight resources.
 
 ### 2. Layer Registration
 
@@ -299,7 +303,7 @@ Registration creates or prepares:
 
 - layer metadata.
 - one FBO for the user layer.
-- sublayer buffer caches.
+- sublayer `BufferCache` slots for geometry VBOs and VAOs.
 - bounds.
 - uploaded geometry or render payload backed buffers.
 
@@ -345,7 +349,28 @@ When redrawing:
 3. Call `render_layer_geometry(layer_idx, transform, width, height)`.
 4. Mark the layer clean and cache the transform.
 
-### 5. Geometry Rendering Inside One Layer
+### 5. GPU Buffer and VAO Cache
+
+Each user layer owns one `BufferCache` per polarity sublayer. The cache stores
+the WebGL buffers and VAOs needed to draw that sublayer's geometry without
+reconfiguring vertex attributes every frame.
+
+The renderer creates these GPU resources lazily:
+
+- if a layer FBO is reused, no geometry VBO or VAO is touched.
+- if a layer FBO must be redrawn, each geometry type checks its cached VAO.
+- missing cache entries create `WebGlBuffer` data and a matching VAO.
+- existing cache entries bind the VAO directly and issue the draw call.
+
+Triangles and path-region cover/clear geometry use vertex buffers. Lines,
+circles, arcs, and thermals use instanced rendering: they share the renderer's
+quad VBO and keep per-instance attribute buffers in the sublayer cache. Triangle
+template flashes keep template vertex buffers plus instance offset buffers.
+
+The cache lifetime follows the layer. Deleting a layer, clearing all layers, or
+rebuilding after context loss deletes the owned VAOs, VBOs, FBOs, and textures.
+
+### 6. Geometry Rendering Inside One Layer
 
 `render_layer_geometry()` draws all polarity sublayers inside one user layer.
 
@@ -369,7 +394,7 @@ This pass is what prevents same-layer overlaps from changing color. The FBO is
 treated as the material mask for that user layer, not as the final colored
 image.
 
-### 6. Final Canvas Composition
+### 7. Final Canvas Composition
 
 `composite_layers_to_target(...)` composites layer FBO textures into the final
 target, which can be the visible canvas or an offscreen framebuffer.
@@ -399,7 +424,7 @@ Current blend mode meanings:
 
 Drill outline and fill/clear behavior relies on these modes.
 
-### 7. Screenshot and Headless Rendering
+### 8. Screenshot and Headless Rendering
 
 Screenshot export uses the same renderer pipeline.
 
@@ -408,7 +433,7 @@ Screenshot export uses the same renderer pipeline.
 - Each tile still follows the layer FBO pass and final composite pass.
 - Measurement overlay is drawn later on a 2D canvas.
 
-### 8. Highlight Rendering
+### 9. Highlight Rendering
 
 Selected-feature highlight is an extra pass after normal layer composition.
 
@@ -424,7 +449,7 @@ The visible app render includes highlight after normal layer composition.
 Screenshot export intentionally omits selected-feature highlight and only draws
 measurements after the WebGL render.
 
-### 9. Performance Invariants
+### 10. Performance Invariants
 
 - Geometry upload and layer FBO redraws happen only when needed.
 - Camera transform changes invalidate the layer FBO result.
