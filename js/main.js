@@ -41,13 +41,6 @@ import { ViewerOptionsStore } from "./viewer-options.js";
 const WASM_INPUT_RESERVE_MARGIN_BYTES = 1024 * 1024;
 const MAX_PARSE_WORKERS = 4;
 const BYTES_PER_MIB = 1024 * 1024;
-const UNKNOWN_LAYER_SOURCE_SIZE_BYTES = 16 * BYTES_PER_MIB;
-const MIN_PARSE_TASK_MEMORY_BYTES = 32 * BYTES_PER_MIB;
-const DEFAULT_PARSE_MEMORY_BUDGET_BYTES = 512 * BYTES_PER_MIB;
-const MIN_PARSE_MEMORY_BUDGET_BYTES = 128 * BYTES_PER_MIB;
-const MAX_PARSE_MEMORY_BUDGET_BYTES = 1536 * BYTES_PER_MIB;
-const PARSE_MEMORY_ESTIMATE_MULTIPLIER = 16;
-const PARSE_MEMORY_HEADROOM_RATIO = 0.5;
 const RECYCLE_PARSE_WORKER_MEMORY_BYTES = 256 * BYTES_PER_MIB;
 const RECYCLE_PARSE_WORKER_GROWTH_BYTES = 128 * BYTES_PER_MIB;
 const ARC_TESSELLATION_QUALITY_LEVELS = {
@@ -362,57 +355,6 @@ function getParseWorkerCount(layerCount) {
   return Math.min(layerCount, availableWorkers, MAX_PARSE_WORKERS);
 }
 
-function getLayerSourceSizeBytes(source) {
-  const sizeBytes = Number(source?.sizeBytes);
-  return Number.isFinite(sizeBytes) && sizeBytes > 0
-    ? sizeBytes
-    : UNKNOWN_LAYER_SOURCE_SIZE_BYTES;
-}
-
-function estimateLayerParseMemoryBytes(source) {
-  return Math.max(
-    getLayerSourceSizeBytes(source) * PARSE_MEMORY_ESTIMATE_MULTIPLIER,
-    MIN_PARSE_TASK_MEMORY_BYTES,
-  );
-}
-
-function getBrowserAvailableHeapBytes() {
-  const memory = globalThis.performance?.memory;
-  const heapLimit = Number(memory?.jsHeapSizeLimit);
-  const usedHeap = Number(memory?.usedJSHeapSize);
-
-  if (!Number.isFinite(heapLimit) || !Number.isFinite(usedHeap)) {
-    return null;
-  }
-
-  return Math.max(0, heapLimit - usedHeap);
-}
-
-function getDeviceMemoryBudgetBytes() {
-  const deviceMemory = Number(globalThis.navigator?.deviceMemory);
-  if (!Number.isFinite(deviceMemory) || deviceMemory <= 0) {
-    return DEFAULT_PARSE_MEMORY_BUDGET_BYTES;
-  }
-
-  return deviceMemory * 1024 * BYTES_PER_MIB * 0.25;
-}
-
-function getParseMemoryBudgetBytes() {
-  const availableHeapBytes = getBrowserAvailableHeapBytes();
-  const rawBudget =
-    availableHeapBytes === null
-      ? getDeviceMemoryBudgetBytes()
-      : Math.min(
-          getDeviceMemoryBudgetBytes(),
-          availableHeapBytes * PARSE_MEMORY_HEADROOM_RATIO,
-        );
-
-  return Math.min(
-    Math.max(rawBudget, MIN_PARSE_MEMORY_BUDGET_BYTES),
-    MAX_PARSE_MEMORY_BUDGET_BYTES,
-  );
-}
-
 class GerberParseWorkerPool {
   constructor(workerCount) {
     this.workers = [];
@@ -514,6 +456,7 @@ class GerberParseWorkerPool {
           offset: task.offset,
           preserveArcRegions: task.options.preserveArcRegions,
           arcTessellationQuality: task.options.arcTessellationQuality,
+          interactionsEnabled: task.options.interactionsEnabled,
         });
       } catch (error) {
         this.activeTasks.delete(worker);
@@ -537,7 +480,10 @@ class GerberParseWorkerPool {
     const shouldRecycle = this.shouldRecycleWorker(event.data?.workerMemory);
 
     if (event.data.ok) {
-      task.resolve(event.data.parsedLayer);
+      task.resolve({
+        renderPayload: event.data.parsedLayer,
+        interactionPayload: event.data.interactionPayload ?? null,
+      });
     } else {
       const errorMessage = event.data.error || "Failed to parse Gerber layer";
       if (
@@ -670,6 +616,7 @@ export class GerberViewer {
     this.layerTouchScrollVelocity = 0;
     this.layerTouchSuppressClickUntil = 0;
     this.pendingLayerRecordsForRecovery = null;
+    this.wasmMemoryExhausted = false;
     this.pendingLazyRenderTimer = null;
     this.lazyViewportRenderState = null;
     this.isViewportTransformActive = false;
@@ -1580,14 +1527,18 @@ export class GerberViewer {
       this.interactionsOptionEnabled,
     );
     this.syncOptionControls();
-    this.showNotification(
-      "Refresh required",
-      "info",
-      NOTIFICATION_DURATION_MS,
-      (messageElement) => {
-        messageElement.textContent = "Interaction setting will apply after refresh.";
-      },
-    );
+    if (this.interactionsOptionEnabled !== this.interactionsEnabled) {
+      this.showNotification(
+        "Page reload required",
+        "info",
+        NOTIFICATION_DURATION_MS,
+        (messageElement) => {
+          messageElement.textContent = "Feature picking setting will apply after page reload.";
+        },
+      );
+    } else {
+      this.hideNotification();
+    }
     this.updateUiState();
   }
 
@@ -1910,16 +1861,20 @@ export class GerberViewer {
           total: layerSnapshot.length,
         });
 
-        if (this.interactionsEnabled || layer.kind === DRILL_LAYER_KIND) {
+        if (layer.kind === DRILL_LAYER_KIND) {
           parsedLayers.push({ ...layer, parsedLayer: null });
         } else {
           try {
-            const parsedLayer = await this.parseLayerContent(
+            const parseResult = await this.parseLayerContent(
               layer.sourceContent,
               layer.offset,
               null,
             );
-            parsedLayers.push({ ...layer, parsedLayer });
+            parsedLayers.push({
+              ...layer,
+              parsedLayer: parseResult.renderPayload,
+              interactionPayload: parseResult.interactionPayload,
+            });
           } catch (error) {
             this.handleLayerLoadError(layer.name, error);
             throw new Error(
@@ -1952,6 +1907,7 @@ export class GerberViewer {
             sourceContent: layer.sourceContent,
             offset: layer.offset,
             drillType: layer.drillType,
+            interactionPayload: layer.interactionPayload,
             skipFatalRecovery: true,
           };
           const layerRecord =
@@ -1962,13 +1918,6 @@ export class GerberViewer {
                   layerOptions,
                   stagedProcessor,
                 )
-              : this.interactionsEnabled
-                ? await this.createGerberLayerRecord(
-                    layer.name,
-                    layer.sourceContent,
-                    layerOptions,
-                    stagedProcessor,
-                  )
               : await this.createParsedLayerRecord(
                   layer.name,
                   layer.parsedLayer,
@@ -2628,8 +2577,9 @@ export class GerberViewer {
   }
 
   async loadLayerSources(layerSources, { title = "Loading files" } = {}) {
+    this.wasmMemoryExhausted = false;
     const total = layerSources.length;
-    if (this.interactionsEnabled || layerSources.some(isDrillSource)) {
+    if (layerSources.some(isDrillSource)) {
       return this.loadLayerSourcesSerially(layerSources, { title, total });
     }
 
@@ -2682,6 +2632,10 @@ export class GerberViewer {
     const results = [];
 
     for (const [index, source] of layerSources.entries()) {
+      if (this.wasmMemoryExhausted) {
+        results.push(...Array(layerSources.length - index).fill(false));
+        break;
+      }
       results.push(
         await this.loadLayerSourceSerially(source, {
           index,
@@ -2736,7 +2690,6 @@ export class GerberViewer {
     let activeTasks = 0;
     let scheduledTasks = 0;
     let completedTasks = 0;
-    let activeMemoryBytes = 0;
     let isResolved = false;
 
     return new Promise((resolve, reject) => {
@@ -2780,7 +2733,13 @@ export class GerberViewer {
       };
 
       const finishIfDone = () => {
-        if (isResolved || completedTasks < total) {
+        if (isResolved) {
+          return;
+        }
+        // Allow early finish when WASM memory is exhausted and no tasks are running.
+        // Un-started tasks will never complete, so we finalize with partial results.
+        const memoryExhausted = this.wasmMemoryExhausted && activeTasks === 0;
+        if (!memoryExhausted && completedTasks < total) {
           return;
         }
 
@@ -2803,18 +2762,18 @@ export class GerberViewer {
       };
 
       const launchMore = () => {
+        if (this.wasmMemoryExhausted) {
+          finishIfDone();
+          return;
+        }
         while (activeTasks < concurrency && scheduledTasks < total) {
-          const task = this.pickNextLayerParseTask(parseTasks, {
-            activeTasks,
-            activeMemoryBytes,
-          });
+          const task = this.pickNextLayerParseTask(parseTasks);
           if (!task) break;
 
           task.scheduled = true;
           scheduledTasks++;
-          const { index, source, estimatedMemoryBytes } = task;
+          const { index, source } = task;
           activeTasks++;
-          activeMemoryBytes += estimatedMemoryBytes;
 
           this.readAndParseLayerSource(source, {
             index,
@@ -2859,10 +2818,6 @@ export class GerberViewer {
             .finally(() => {
               activeTasks--;
               completedTasks++;
-              activeMemoryBytes = Math.max(
-                0,
-                activeMemoryBytes - estimatedMemoryBytes,
-              );
               if (isResolved) {
                 return;
               }
@@ -2882,39 +2837,12 @@ export class GerberViewer {
     return layerSources.map((source, index) => ({
       source,
       index,
-      estimatedMemoryBytes: estimateLayerParseMemoryBytes(source),
       scheduled: false,
     }));
   }
 
-  pickNextLayerParseTask(
-    parseTasks,
-    { activeTasks, activeMemoryBytes },
-  ) {
-    const candidates = parseTasks.filter((task) => !task.scheduled);
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    const budgetBytes = getParseMemoryBudgetBytes();
-    const availableBytes = budgetBytes - activeMemoryBytes;
-    const fittingCandidates = candidates.filter(
-      (task) => task.estimatedMemoryBytes <= availableBytes,
-    );
-
-    if (fittingCandidates.length > 0) {
-      return fittingCandidates.sort(
-        (a, b) => b.estimatedMemoryBytes - a.estimatedMemoryBytes,
-      )[0];
-    }
-
-    if (activeTasks > 0) {
-      return null;
-    }
-
-    return candidates.sort(
-      (a, b) => a.estimatedMemoryBytes - b.estimatedMemoryBytes,
-    )[0];
+  pickNextLayerParseTask(parseTasks) {
+    return parseTasks.find((task) => !task.scheduled) ?? null;
   }
 
   createLayerLoadProgress(total) {
@@ -2959,12 +2887,33 @@ export class GerberViewer {
     const normalizedOffset = normalizeLayerOffset(offset);
     const parseOptions = this.getParseOptions();
 
-    if (parseOptions.interactionsEnabled) {
-      throw new Error("Interactive parsing must run inside the active WASM processor");
-    }
-
     if (parseWorkerPool) {
       return parseWorkerPool.parse(content, normalizedOffset, parseOptions);
+    }
+
+    const parsePayloadWithOptions =
+      this.wasmModule?.parse_gerber_layer_payload_with_options;
+    if (
+      parseOptions.interactionsEnabled &&
+      typeof parsePayloadWithOptions === "function"
+    ) {
+      this.reserveWasmInputCapacity(content);
+      const payload = parsePayloadWithOptions(
+        content,
+        normalizedOffset.x,
+        normalizedOffset.y,
+        parseOptions.preserveArcRegions,
+        parseOptions.arcTessellationQuality,
+      );
+      return {
+        renderPayload: payload.renderPayload,
+        interactionPayload: payload.interactionPayload ?? null,
+      };
+    }
+    if (parseOptions.interactionsEnabled) {
+      throw new Error(
+        "Interaction parsing requires an updated WASM module",
+      );
     }
 
     const parseWithOptions = this.wasmModule?.parse_gerber_layer_with_options;
@@ -2977,13 +2926,16 @@ export class GerberViewer {
         throw new Error("Arc tessellation quality requires an updated WASM module");
       }
       this.reserveWasmInputCapacity(content);
-      return parseWithOptions(
-        content,
-        normalizedOffset.x,
-        normalizedOffset.y,
-        parseOptions.preserveArcRegions,
-        parseOptions.arcTessellationQuality,
-      );
+      return {
+        renderPayload: parseWithOptions(
+          content,
+          normalizedOffset.x,
+          normalizedOffset.y,
+          parseOptions.preserveArcRegions,
+          parseOptions.arcTessellationQuality,
+        ),
+        interactionPayload: null,
+      };
     }
 
     if (
@@ -2994,11 +2946,14 @@ export class GerberViewer {
     }
 
     this.reserveWasmInputCapacity(content);
-    return this.wasmModule.parse_gerber_layer(
-      content,
-      normalizedOffset.x,
-      normalizedOffset.y,
-    );
+    return {
+      renderPayload: this.wasmModule.parse_gerber_layer(
+        content,
+        normalizedOffset.x,
+        normalizedOffset.y,
+      ),
+      interactionPayload: null,
+    };
   }
 
   async readAndParseLayerSource(
@@ -3043,7 +2998,7 @@ export class GerberViewer {
         current: progress.completedLayers,
         total,
       });
-      const parsedLayer = await this.parseLayerContent(
+      const { renderPayload, interactionPayload = null } = await this.parseLayerContent(
         content,
         source.offset,
         parseWorkerPool,
@@ -3059,7 +3014,8 @@ export class GerberViewer {
         ok: true,
         index,
         name,
-        parsedLayer,
+        parsedLayer: renderPayload,
+        interactionPayload,
         sourceContent: content,
         offset: source.offset,
       };
@@ -3112,6 +3068,9 @@ export class GerberViewer {
         current: index,
         total,
       });
+      // Yield one frame so the browser can repaint the progress modal before
+      // the synchronous WASM parse+interaction-build blocks the main thread.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
 
       if (isDrillSource(source)) {
         await this.addDrillLayer(name, content, { offset: source.offset });
@@ -3175,6 +3134,7 @@ export class GerberViewer {
         {
           offset: parseResult.offset,
           sourceContent: parseResult.sourceContent,
+          interactionPayload: parseResult.interactionPayload,
         },
       );
       const completed = this.markLayerLoadComplete(progress);
@@ -3197,6 +3157,7 @@ export class GerberViewer {
       return null;
     } finally {
       parseResult.parsedLayer = null;
+      parseResult.interactionPayload = null;
       parseResult.sourceContent = null;
     }
   }
@@ -3316,16 +3277,24 @@ export class GerberViewer {
     }
   }
 
-  disposeWasmProcessor() {
+  disposeWasmProcessor({ abandon = false } = {}) {
     if (!this.wasmProcessor) return;
 
     const processor = this.wasmProcessor;
     this.wasmProcessor = null;
-    this.disposeWasmProcessorInstance(processor, "processor");
+    this.disposeWasmProcessorInstance(processor, "processor", { abandon });
   }
 
-  disposeWasmProcessorInstance(processor, label = "processor") {
+  disposeWasmProcessorInstance(processor, label = "processor", { abandon = false } = {}) {
     if (!processor) return;
+    if (abandon) {
+      try {
+        processor.__destroy_into_raw?.();
+      } catch (error) {
+        console.warn(`[WASM] Failed to abandon ${label}:`, error);
+      }
+      return;
+    }
     if (typeof processor.free === "function") {
       try {
         processor.free();
@@ -3353,7 +3322,7 @@ export class GerberViewer {
     const recoveredPendingLayerIds = this.collectPendingLayerRecoveryIds();
     const layerSnapshot = this.snapshotLayersForRecovery();
     if (layerSnapshot.length === 0) {
-      this.disposeWasmProcessor();
+      this.disposeWasmProcessor({ abandon: true });
       this.createWebGlProcessor();
       this.clearSelectedFeature({ refresh: false });
       this.clearRecoveredPendingLayerRecords(recoveredPendingLayerIds);
@@ -3376,12 +3345,13 @@ export class GerberViewer {
     );
 
     try {
-      this.disposeWasmProcessor();
+      this.disposeWasmProcessor({ abandon: true });
       this.layers = [];
       this.clearSelectedFeature({ refresh: false });
       this.createWebGlProcessor();
       this.resizeCanvas({ allowProcessorResize: true, preserveViewState: viewState });
 
+      let restoreCausedFatalError = false;
       for (const layer of layerSnapshot) {
         try {
           await this.restoreLayerFromSnapshot(layer);
@@ -3390,9 +3360,19 @@ export class GerberViewer {
           console.error(`[WASM] Failed to restore layer ${layer.name}:`, restoreError);
           this.addDiagnostic("error", `Restore failed: ${layer.name}`, message);
           if (isFatalWasmRuntimeError(restoreError)) {
+            restoreCausedFatalError = true;
             break;
           }
         }
+      }
+
+      if (restoreCausedFatalError) {
+        // The new processor also OOM'd during restore; create a fresh empty one
+        // so subsequent callers don't encounter a trapped WASM module.
+        this.layers = [];
+        this.disposeWasmProcessor({ abandon: true });
+        this.createWebGlProcessor();
+        this.resizeCanvas({ allowProcessorResize: true, preserveViewState: viewState });
       }
 
       this.nextLayerDomId = nextLayerDomId;
@@ -3507,6 +3487,9 @@ export class GerberViewer {
     try {
       if (!options.skipFatalRecovery) {
         await this.waitForWasmProcessorRecovery();
+        if (this.wasmMemoryExhausted) {
+          throw new Error("WASM memory limit reached");
+        }
       }
       if (!processor || this.isWebGlContextLost) {
         throw new Error("WebGL renderer is not available");
@@ -3538,6 +3521,7 @@ export class GerberViewer {
 
       if (isFatalWasmRuntimeError(error) && !options.skipFatalRecovery) {
         await this.recoverWasmProcessorAfterFatalError(name, error);
+        this.wasmMemoryExhausted = true;
       }
 
       console.error(`[Layer] Failed to add layer ${name}:`, error);
@@ -3559,6 +3543,9 @@ export class GerberViewer {
     try {
       if (!options.skipFatalRecovery) {
         await this.waitForWasmProcessorRecovery();
+        if (this.wasmMemoryExhausted) {
+          throw new Error("WASM memory limit reached");
+        }
       }
       if (!processor || this.isWebGlContextLost) {
         throw new Error("WebGL renderer is not available");
@@ -3614,6 +3601,7 @@ export class GerberViewer {
     } catch (error) {
       if (isFatalWasmRuntimeError(error) && !options.skipFatalRecovery) {
         await this.recoverWasmProcessorAfterFatalError(name, error);
+        this.wasmMemoryExhausted = true;
       }
 
       console.error(`[Layer] Failed to add drill layer ${name}:`, error);
@@ -3641,6 +3629,9 @@ export class GerberViewer {
     try {
       if (!options.skipFatalRecovery) {
         await this.waitForWasmProcessorRecovery();
+        if (this.wasmMemoryExhausted) {
+          throw new Error("WASM memory limit reached");
+        }
       }
       if (!processor || this.isWebGlContextLost) {
         throw new Error("WebGL renderer is not available");
@@ -3654,6 +3645,23 @@ export class GerberViewer {
       } else {
         throw new Error("Parsed layer rendering requires an updated WASM module");
       }
+      if (
+        this.interactionsEnabled &&
+        options.interactionPayload &&
+        typeof processor.add_interaction_payload === "function"
+      ) {
+        try {
+          processor.add_interaction_payload(layerId, options.interactionPayload);
+        } catch (interactionError) {
+          if (isFatalWasmRuntimeError(interactionError)) {
+            throw interactionError;
+          }
+          console.warn(
+            `[Interaction] Failed to attach interactions for ${name}:`,
+            interactionError,
+          );
+        }
+      }
       return this.createLayerMetadata(name, layerId, options, processor);
     } catch (error) {
       if (isNoGeometryError(getErrorMessage(error))) {
@@ -3663,6 +3671,7 @@ export class GerberViewer {
 
       if (isFatalWasmRuntimeError(error) && !options.skipFatalRecovery) {
         await this.recoverWasmProcessorAfterFatalError(name, error);
+        this.wasmMemoryExhausted = true;
       }
 
       console.error(`[Layer] Failed to add parsed layer ${name}:`, error);
@@ -3778,7 +3787,7 @@ export class GerberViewer {
       // Render with active layers
       if (blendModes.some((mode) => mode !== 0)) {
         if (typeof this.wasmProcessor.render_with_clear_and_blend_modes !== "function") {
-          throw new Error("Drill fill rendering requires an updated WASM module");
+          throw new Error("Stack compositing and drill rendering require an updated WASM module");
         }
         this.wasmProcessor.render_with_clear_and_blend_modes(
           activeLayerIds,
