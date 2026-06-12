@@ -92,7 +92,7 @@ jobs:
           echo "github_package_name=${github_package_name}" >> "$GITHUB_OUTPUT"
           echo "npmjs_exists=${npmjs_exists}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit release version and tag
+      - name: Prepare release version commit
         shell: bash
         run: |
           set -euo pipefail
@@ -117,13 +117,17 @@ jobs:
             fi
 
             git commit -m "chore(release): ${{ steps.release.outputs.tag }}"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
           else
             echo "${PACKAGE_JSON} is already at ${{ steps.release.outputs.version }}"
           fi
 
-          git tag "${{ steps.release.outputs.tag }}"
-          git push origin "${{ steps.release.outputs.tag }}"
+      - name: Set up Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Test Rust crate
+        run: cargo test --manifest-path wasm/Cargo.toml --verbose
 
       - name: Build WASM package
         run: npm run build:wasm --prefix "$PACKAGE_DIR"
@@ -134,6 +138,20 @@ jobs:
       - name: Verify npm package contents
         working-directory: ${{ env.PACKAGE_DIR }}
         run: npm pack --dry-run
+
+      - name: Push release commit and tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.release.outputs.tag_exists }}" == "true" ]]; then
+            echo "Reusing existing release tag ${{ steps.release.outputs.tag }}"
+            exit 0
+          fi
+
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git tag "${{ steps.release.outputs.tag }}"
+          git push origin "${{ steps.release.outputs.tag }}"
 
       - name: Pack release artifact
         id: package-artifact
