@@ -1374,11 +1374,13 @@ export class GerberViewer {
     this.syncFilterInputs();
   }
 
-  getParseOptions() {
+  getParseOptions({ forceInteractions = false } = {}) {
     return {
       preserveArcRegions: this.preserveArcRegions,
       arcTessellationQuality: this.getArcTessellationQualityLevel(),
-      interactionsEnabled: this.interactionsEnabled && this.featurePickingAvailable,
+      interactionsEnabled:
+        this.interactionsEnabled &&
+        (forceInteractions || this.featurePickingAvailable),
     };
   }
 
@@ -1915,6 +1917,7 @@ export class GerberViewer {
               layer.sourceContent,
               layer.offset,
               null,
+              { forceInteractions: true },
             );
             parsedLayers.push({
               ...layer,
@@ -1970,6 +1973,9 @@ export class GerberViewer {
                   layerOptions,
                   stagedProcessor,
                 );
+          if (layer.kind !== DRILL_LAYER_KIND) {
+            layerRecord.interactionPayload = layer.interactionPayload ?? null;
+          }
           this.prepareLayerMetadata(layerRecord);
           stagedLayers.push(layerRecord);
 
@@ -2632,6 +2638,9 @@ export class GerberViewer {
     if (this.layers.length === 0) {
       this.disposeInteractionProcessor();
       this.featurePickingAvailable = this.interactionsEnabled;
+      this.configureWasmProcessorOptions(this.wasmProcessor, {
+        interactionsEnabled: this.interactionsEnabled,
+      });
     }
     const total = layerSources.length;
     if (layerSources.some(isDrillSource)) {
@@ -2945,9 +2954,14 @@ export class GerberViewer {
     }
   }
 
-  async parseLayerContent(content, offset, parseWorkerPool) {
+  async parseLayerContent(
+    content,
+    offset,
+    parseWorkerPool,
+    parseOptionOverrides = {},
+  ) {
     const normalizedOffset = normalizeLayerOffset(offset);
-    const parseOptions = this.getParseOptions();
+    const parseOptions = this.getParseOptions(parseOptionOverrides);
 
     if (parseWorkerPool) {
       return parseWorkerPool.parse(content, normalizedOffset, parseOptions);
