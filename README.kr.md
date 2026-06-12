@@ -151,11 +151,16 @@ wasm-gerber-viewer/
 │   └── src/
 │       ├── lib.rs                     # WASM API 진입점
 │       ├── drill.rs                   # Excellon/NC drill 파서
+│       ├── interaction.rs             # 도형 선택과 강조 표시 데이터
 │       ├── parse_common.rs            # 파서 숫자 처리 공통 함수
 │       ├── parser.rs                  # Gerber 파서 진입점
 │       ├── parser/                    # aperture, macro, geometry, state, tests
 │       ├── renderer.rs                # WebGL 렌더러
-│       ├── renderer/                  # buffer, camera, shader, GLSL 소스
+│       ├── renderer/                  # 렌더러 모듈
+│       │   ├── buffer.rs              # GPU 리소스 구조체
+│       │   ├── camera.rs              # 변환 계산
+│       │   ├── shader.rs              # 셰이더 프로그램
+│       │   └── shaders/               # GLSL 셰이더 소스
 │       ├── shape.rs                   # geometry 데이터 모델
 │       └── util.rs                    # 포맷팅과 유틸리티
 ├── demo/                              # 샘플과 성능 테스트 Gerber
