@@ -366,6 +366,9 @@ export class ScreenshotExporter {
     const processor = new wasmModule.GerberProcessor();
     processor.init(gl);
     const parseOptions = this.getParseOptions?.() ?? {};
+    if (typeof processor.set_interactions_enabled === "function") {
+      processor.set_interactions_enabled(false);
+    }
     if (typeof processor.set_preserve_arc_regions === "function") {
       processor.set_preserve_arc_regions(
         parseOptions.preserveArcRegions !== false,
@@ -384,15 +387,17 @@ export class ScreenshotExporter {
       throw new Error("Arc tessellation quality requires an updated WASM module.");
     }
     const renderOptions = this.getRenderOptions?.() ?? {};
+    const isStackCompositeMode = renderOptions.compositeMode === "stack";
     if (typeof processor.set_minimum_feature_pixels === "function") {
       processor.set_minimum_feature_pixels(
-        Number(renderOptions.minimumFeaturePixels ?? 0),
+        Number(renderOptions.minimumFeaturePixels ?? 1),
       );
     }
 
     const activeLayerIds = [];
     const colorData = [];
     const blendModes = [];
+    const gerberRenderLayers = [];
     const drillLayers = [];
     let wasmLayerCount = 0;
     const drillFillColor = includeBackground
@@ -459,10 +464,20 @@ export class ScreenshotExporter {
         : processor.add_layer(layer.sourceContent);
       wasmLayerCount += 1;
       if (layer.visible) {
-        activeLayerIds.push(layerId);
-        colorData.push(layer.color[0], layer.color[1], layer.color[2], 1);
-        blendModes.push(0);
+        gerberRenderLayers.push({
+          layerId,
+          color: layer.color,
+        });
       }
+    }
+
+    const orderedGerberRenderLayers = isStackCompositeMode
+      ? [...gerberRenderLayers].reverse()
+      : gerberRenderLayers;
+    for (const layer of orderedGerberRenderLayers) {
+      activeLayerIds.push(layer.layerId);
+      colorData.push(layer.color[0], layer.color[1], layer.color[2], 1);
+      blendModes.push(isStackCompositeMode ? 1 : 0);
     }
 
     for (const layer of drillLayers) {
@@ -889,7 +904,7 @@ export class ScreenshotExporter {
     }
     if (screenshotRenderer.blendModes.some((mode) => mode !== 0)) {
       if (typeof screenshotRenderer.processor.render_tile_with_blend_modes !== "function") {
-        throw new Error("Drill screenshot rendering requires an updated WASM module.");
+        throw new Error("Stack compositing and drill screenshot rendering require an updated WASM module.");
       }
       screenshotRenderer.processor.render_tile_with_blend_modes(
         screenshotRenderer.activeLayerIds,

@@ -33,6 +33,7 @@ Website:
 - NC drill overlay rendering support
 - Touch support for mobile devices
 - Multi-layer rendering with per-layer color and visibility control
+- Feature picking with selected-area highlighting
 - Horizontal/vertical flip controls
 - Ruler measurements with mm/inch unit switching
 - Screenshot export with resolution options, including ruler overlays
@@ -119,22 +120,26 @@ wasm-gerber-viewer/
 │   ├── dom-elements.js                # DOM lookup helpers
 │   ├── drawer-controller.js           # Drawer interactions
 │   ├── file-utils.js                  # File and error helpers
+│   ├── gerber-parse-worker.js         # Web Worker host for WASM parsing
 │   ├── layer-filters.js               # Layer type filters
 │   ├── layer-list.js                  # Layer list rendering
 │   ├── measurements.js                # Ruler measurements
 │   ├── notifications.js               # Toast notifications
 │   ├── screenshot-exporter.js         # Screenshot export
 │   ├── source-loader.js               # Local, archive, and URL loading
+│   ├── viewer-options.js              # Persisted viewer options
 │   └── viewport.js                    # Camera and viewport math
 ├── vendor/                            # Vendored browser libraries
 ├── packages/
 │   └── wasm-gerber-renderer/          # npm package and Node CLI
 ├── wasm/
 │   ├── Cargo.toml                     # Rust crate manifest
+│   ├── README.md                      # Rust/WASM pipeline notes
 │   ├── pkg/                           # Generated wasm-pack output
 │   └── src/
 │       ├── lib.rs                     # WASM API entry point
 │       ├── drill.rs                   # Excellon/NC drill parser
+│       ├── interaction.rs             # Feature picking and highlight data
 │       ├── parse_common.rs            # Shared parser number helpers
 │       ├── parser.rs                  # Gerber parser entry point
 │       ├── parser/                    # Parser modules
@@ -147,7 +152,8 @@ wasm-gerber-viewer/
 │       ├── renderer/                  # Renderer modules
 │       │   ├── buffer.rs              # GPU resource structs
 │       │   ├── camera.rs              # Transform math
-│       │   └── shader.rs              # Shader programs
+│       │   ├── shader.rs              # Shader programs
+│       │   └── shaders/               # GLSL shader sources
 │       ├── shape.rs                   # Geometry data model
 │       └── util.rs                    # Formatting and utility helpers
 ├── demo/                              # Sample and performance Gerbers

@@ -90,6 +90,21 @@ export function getViewerElements(documentRef = document) {
     cursorReadout: requireElement(documentRef, "cursor-readout"),
     boundsReadout: requireElement(documentRef, "bounds-readout"),
     diagnosticsCount: requireElement(documentRef, "diagnostics-count"),
+    renderingModeLazyInput: requireElement(documentRef, "rendering-mode-lazy"),
+    renderingModeRealtimeInput: requireElement(
+      documentRef,
+      "rendering-mode-realtime",
+    ),
+    compositeModeBlendInput: requireElement(
+      documentRef,
+      "composite-mode-blend",
+    ),
+    compositeModeStackInput: requireElement(
+      documentRef,
+      "composite-mode-stack",
+    ),
+    interactionModeOnInput: requireElement(documentRef, "interaction-mode-on"),
+    interactionModeOffInput: requireElement(documentRef, "interaction-mode-off"),
     regionArcExactInput: requireElement(documentRef, "region-arc-exact"),
     regionArcApproximateInput: requireElement(
       documentRef,

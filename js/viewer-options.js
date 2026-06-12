@@ -1,15 +1,20 @@
 const DEFAULT_VIEWER_OPTIONS = {
   preserveArcRegions: true,
   arcTessellationQuality: "normal",
-  minimumFeaturePixels: 0,
+  minimumFeaturePixels: 1,
   drillOutlinePixels: 0,
   pthPlatingMicrometers: 20,
+  renderingMode: "lazy",
+  compositeMode: "blend",
+  interactionsEnabled: true,
 };
 
 const ARC_TESSELLATION_QUALITIES = new Set(["low", "normal", "high"]);
 const MINIMUM_FEATURE_PIXELS = new Set([0, 1, 2]);
 const DRILL_OUTLINE_PIXELS = new Set([0, 1, 2, 3]);
 const PTH_PLATING_MICROMETERS = new Set([10, 20, 30, 40, 50]);
+const RENDERING_MODES = new Set(["lazy", "realtime"]);
+const COMPOSITE_MODES = new Set(["blend", "stack"]);
 
 function createMemoryStorage() {
   const values = new Map();
@@ -35,7 +40,7 @@ function getDefaultStorage() {
 export class ViewerOptionsStore {
   constructor(
     storage = getDefaultStorage(),
-    storageKey = "wasm-gerber-viewer.options",
+    storageKey = "wasm-gerber-viewer.options.v2",
   ) {
     this.storage = storage ?? createMemoryStorage();
     this.storageKey = storageKey;
@@ -73,6 +78,16 @@ export class ViewerOptionsStore {
         )
           ? stored.pthPlatingMicrometers
           : DEFAULT_VIEWER_OPTIONS.pthPlatingMicrometers,
+        renderingMode: RENDERING_MODES.has(stored.renderingMode)
+          ? stored.renderingMode
+          : DEFAULT_VIEWER_OPTIONS.renderingMode,
+        compositeMode: COMPOSITE_MODES.has(stored.compositeMode)
+          ? stored.compositeMode
+          : DEFAULT_VIEWER_OPTIONS.compositeMode,
+        interactionsEnabled:
+          typeof stored.interactionsEnabled === "boolean"
+            ? stored.interactionsEnabled
+            : DEFAULT_VIEWER_OPTIONS.interactionsEnabled,
       };
     } catch {
       return this.getDefaults();

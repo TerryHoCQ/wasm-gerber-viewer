@@ -33,6 +33,7 @@ PCB 시각화를 위한 WASM/WebGL2 기반 Gerber 파일 뷰어입니다.
 - NC drill 오버레이 렌더링 지원
 - 모바일 기기 터치 조작 지원
 - 레이어별 색상, 투명도, 표시 여부 제어
+- 도형 선택과 선택 영역 강조 표시 지원
 - 좌우/상하 반전 제어
 - mm/inch 단위 전환이 가능한 자 측정
 - 자 오버레이를 포함한 해상도별 스크린샷 내보내기
@@ -147,15 +148,21 @@ wasm-gerber-viewer/
 ├── wasm/
 │   ├── Cargo.toml                     # Rust crate manifest
 │   ├── Cargo.lock                     # Rust dependency lockfile
+│   ├── README.md                      # Rust/WASM 파이프라인 설명
 │   ├── pkg/                           # 생성된 wasm-pack 출력
 │   └── src/
 │       ├── lib.rs                     # WASM API 진입점
 │       ├── drill.rs                   # Excellon/NC drill 파서
+│       ├── interaction.rs             # 도형 선택과 강조 표시 데이터
 │       ├── parse_common.rs            # 파서 숫자 처리 공통 함수
 │       ├── parser.rs                  # Gerber 파서 진입점
 │       ├── parser/                    # aperture, macro, geometry, state, tests
 │       ├── renderer.rs                # WebGL 렌더러
-│       ├── renderer/                  # buffer, camera, shader, GLSL 소스
+│       ├── renderer/                  # 렌더러 모듈
+│       │   ├── buffer.rs              # GPU 리소스 구조체
+│       │   ├── camera.rs              # 변환 계산
+│       │   ├── shader.rs              # 셰이더 프로그램
+│       │   └── shaders/               # GLSL 셰이더 소스
 │       ├── shape.rs                   # geometry 데이터 모델
 │       └── util.rs                    # 포맷팅과 유틸리티
 ├── demo/                              # 샘플과 성능 테스트 Gerber

@@ -248,6 +248,86 @@
                   </div>
                   <div class="option-outline">
                     <div class="option-row">
+                      <span>View Updates</span>
+                      <div class="segmented-control" role="radiogroup" aria-label="View update rendering mode">
+                        <label>
+                          <input
+                            type="radio"
+                            id="rendering-mode-lazy"
+                            name="rendering-mode"
+                            value="lazy"
+                          />
+                          <span>Lazy</span>
+                        </label>
+                        <label>
+                          <input
+                            type="radio"
+                            id="rendering-mode-realtime"
+                            name="rendering-mode"
+                            value="realtime"
+                          />
+                          <span>Real-time</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="option-outline">
+                    <div class="option-row">
+                      <span>Layer Rendering</span>
+                      <div class="segmented-control" role="radiogroup" aria-label="Layer rendering mode">
+                        <label>
+                          <input
+                            type="radio"
+                            id="composite-mode-blend"
+                            name="composite-mode"
+                            value="blend"
+                          />
+                          <span>Blend</span>
+                        </label>
+                        <label>
+                          <input
+                            type="radio"
+                            id="composite-mode-stack"
+                            name="composite-mode"
+                            value="stack"
+                          />
+                          <span>Stack</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="option-outline">
+                    <div class="option-row">
+                      <span>Feature Picking</span>
+                      <div class="segmented-control" role="radiogroup" aria-label="Feature picking data mode">
+                        <label>
+                          <input
+                            type="radio"
+                            id="interaction-mode-on"
+                            name="interaction-mode"
+                            value="on"
+                          />
+                          <span>Enabled</span>
+                        </label>
+                        <label>
+                          <input
+                            type="radio"
+                            id="interaction-mode-off"
+                            name="interaction-mode"
+                            value="off"
+                          />
+                          <span>Disabled</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="option-note">
+                      <span>Applied after page reload.</span>
+                      <span>Very slow · Experimental</span>
+                      <span>Disable this if memory is insufficient.</span>
+                    </div>
+                  </div>
+                  <div class="option-outline">
+                    <div class="option-row">
                       <span>Region Arcs</span>
                       <div class="segmented-control" role="radiogroup" aria-label="Region arc rendering mode">
                         <label>

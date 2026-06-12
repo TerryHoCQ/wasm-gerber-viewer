@@ -33,6 +33,7 @@
 - 支援 NC drill 疊加渲染
 - 支援行動裝置觸控操作
 - 支援依圖層控制顏色、透明度與可見性
+- 支援特徵選取與選取區域醒目提示
 - 支援水平/垂直翻轉
 - 尺規測量支援 mm/inch 單位切換
 - 可依解析度匯出截圖，並可包含尺規覆蓋層
@@ -147,15 +148,21 @@ wasm-gerber-viewer/
 ├── wasm/
 │   ├── Cargo.toml                     # Rust crate manifest
 │   ├── Cargo.lock                     # Rust dependency lockfile
+│   ├── README.md                      # Rust/WASM 管線說明
 │   ├── pkg/                           # 產生的 wasm-pack 輸出
 │   └── src/
 │       ├── lib.rs                     # WASM API 入口
 │       ├── drill.rs                   # Excellon/NC drill 解析器
+│       ├── interaction.rs             # 特徵選取與醒目提示資料
 │       ├── parse_common.rs            # 解析器數字處理共用函式
 │       ├── parser.rs                  # Gerber 解析器入口
 │       ├── parser/                    # aperture、macro、geometry、state、tests
 │       ├── renderer.rs                # WebGL 渲染器
-│       ├── renderer/                  # buffer、camera、shader 與 GLSL 原始碼
+│       ├── renderer/                  # 渲染器模組
+│       │   ├── buffer.rs              # GPU 資源結構
+│       │   ├── camera.rs              # 變換計算
+│       │   ├── shader.rs              # 著色器程式
+│       │   └── shaders/               # GLSL 著色器原始碼
 │       ├── shape.rs                   # geometry 資料模型
 │       └── util.rs                    # 格式化與工具函式
 ├── demo/                              # 範例與效能測試 Gerber
