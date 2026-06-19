@@ -1,5 +1,6 @@
 mod drill;
 mod interaction;
+mod odb;
 mod parse_common;
 mod parser;
 mod renderer;
@@ -10,6 +11,7 @@ use crate::drill::{
     parse_drill_with_offset, parse_drill_with_offset_and_interactions, DrillParseResult,
 };
 use crate::interaction::InteractionLayer;
+use crate::odb::parse_odb_layer_impl;
 use crate::parser::{
     parse_gerber_payload_with_options, parse_gerber_with_options, ParsedGerberLayer,
 };
@@ -199,6 +201,25 @@ pub fn parse_drill_layer(
 ) -> Result<JsValue, JsValue> {
     let drill = parse_drill_with_offset(&content, DRILL_OUTLINE_WIDTH_MM, offset_x, offset_y)?;
     drill_parse_result_to_js(drill)
+}
+
+/// Parse ODB++ format file (binary data)
+///
+/// # Arguments
+/// * `content` - ODB++ file content as byte array
+/// * `offset_x` - Horizontal offset in mm
+/// * `offset_y` - Vertical offset in mm
+///
+/// # Returns
+/// * `JsValue` - Parsed geometry layers in JS format
+#[wasm_bindgen]
+pub fn parse_odb_layer(
+    content: Vec<u8>,
+    offset_x: f32,
+    offset_y: f32,
+) -> Result<JsValue, JsValue> {
+    let gerber_data_layers = parse_odb_layer_impl(&content, offset_x, offset_y)?;
+    gerber_data_layers_to_js(&gerber_data_layers)
 }
 
 /// Main Gerber processor with stateful WebGL renderer
@@ -644,6 +665,37 @@ impl GerberProcessor {
             parse_drill_with_offset(&content, DRILL_OUTLINE_WIDTH_MM, offset_x, offset_y)?
         };
         self.add_drill_parse_result(drill)
+    }
+
+    /// Add an ODB++ layer from binary data
+    ///
+    /// # Arguments
+    /// * `content` - ODB++ file content as byte array
+    ///
+    /// # Returns
+    /// * Layer ID (u32) for tracking this layer
+    pub fn add_odb_layer(&mut self, content: Vec<u8>) -> Result<u32, JsValue> {
+        let gerber_data_layers = parse_odb_layer_impl(&content, 0.0, 0.0)?;
+        self.add_parsed_layers(gerber_data_layers)
+    }
+
+    /// Add an ODB++ layer after translating its parsed geometry
+    ///
+    /// # Arguments
+    /// * `content` - ODB++ file content as byte array
+    /// * `offset_x` - Horizontal offset in mm
+    /// * `offset_y` - Vertical offset in mm
+    ///
+    /// # Returns
+    /// * Layer ID (u32) for tracking this layer
+    pub fn add_odb_layer_with_offset(
+        &mut self,
+        content: Vec<u8>,
+        offset_x: f32,
+        offset_y: f32,
+    ) -> Result<u32, JsValue> {
+        let gerber_data_layers = parse_odb_layer_impl(&content, offset_x, offset_y)?;
+        self.add_parsed_layers(gerber_data_layers)
     }
 
     /// Add a layer from geometry parsed in a worker or another WASM instance.
