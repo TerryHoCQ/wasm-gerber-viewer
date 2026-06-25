@@ -179,6 +179,8 @@ test("package board outline detection accepts common outline names", () => {
   assert.equal(isBoardOutlineLayerName("board.gko"), true);
   assert.equal(isBoardOutlineLayerName("Edge.Cuts.gbr"), true);
   assert.equal(isBoardOutlineLayerName("board-outline.gbr"), true);
+  assert.equal(isBoardOutlineLayerName("board-outlines.gbr"), true);
+  assert.equal(isBoardOutlineLayerName("DrawingOutLineLayer.gbr"), true);
   assert.equal(isBoardOutlineLayerName("top-copper.gtl"), false);
 });
 

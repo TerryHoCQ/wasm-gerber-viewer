@@ -533,7 +533,10 @@ export function isBoardOutlineLayerName(name) {
   if (dotIndex >= 0 && BOARD_OUTLINE_EXTENSIONS.has(normalized.slice(dotIndex))) {
     return true;
   }
-  return /(^|[^a-z0-9])(board[-_. ]?outline|outline|edge[-_. ]?cuts?|profile|contour|mechanical|mech|dimension)([^a-z0-9]|$)/i.test(
+  if (normalized.includes("outline")) {
+    return true;
+  }
+  return /(^|[^a-z0-9])(edge[-_. ]?cuts?|profile|contour|mechanical|mech|dimension)([^a-z0-9]|$)/i.test(
     normalized,
   );
 }
