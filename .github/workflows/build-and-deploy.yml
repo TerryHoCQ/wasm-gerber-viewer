@@ -133,6 +133,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     needs: build
+    concurrency:
+      group: vercel-${{ github.repository }}
+      cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -215,11 +218,32 @@ jobs:
         if: steps.vercel-secrets.outputs.enabled == 'true'
         run: vercel build ${{ steps.vercel-env.outputs.prod-flag }} --token="$VERCEL_TOKEN"
 
+      - name: Inspect Vercel output
+        if: steps.vercel-secrets.outputs.enabled == 'true'
+        run: |
+          output_dir=".vercel/output"
+          echo "Vercel output size:"
+          du -sh "$output_dir"
+          echo "Vercel output file count:"
+          find "$output_dir" -type f | wc -l
+          {
+            echo "### Vercel output"
+            echo ""
+            echo "- Size: $(du -sh "$output_dir" | cut -f1)"
+            echo "- Files: $(find "$output_dir" -type f | wc -l)"
+            echo ""
+            echo "Largest files:"
+            echo ""
+            echo '```'
+            find "$output_dir" -type f -printf '%s %p\n' | sort -nr | head -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy Vercel prebuilt output
         if: steps.vercel-secrets.outputs.enabled == 'true'
         id: vercel-deploy
         run: |
-          deployment_url="$(vercel deploy --prebuilt ${{ steps.vercel-env.outputs.prod-flag }} --token="$VERCEL_TOKEN")"
+          deployment_url="$(vercel deploy --prebuilt --archive=tgz ${{ steps.vercel-env.outputs.prod-flag }} --token="$VERCEL_TOKEN")"
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
           echo "Deployed to $deployment_url" >> "$GITHUB_STEP_SUMMARY"
 
