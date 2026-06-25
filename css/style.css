@@ -726,6 +726,49 @@ button {
   display: none;
 }
 
+.outline-source-control {
+  display: grid;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.outline-source-control span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.outline-source-control select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #0f1724;
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 650;
+  outline: none;
+  padding: 0 12px;
+}
+
+.outline-source-control select:focus {
+  border-color: rgba(94, 234, 212, 0.62);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.18);
+}
+
+.outline-source-control option {
+  background: #0f1724;
+  color: #f8fafc;
+}
+
+.side-panel.collapsed .outline-source-control {
+  display: none;
+}
+
 .layer-list-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -766,7 +809,6 @@ button {
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .drill-layer-item .layer-label span {
@@ -939,6 +981,11 @@ button {
 
 .layer-context-menu-item.danger {
   color: #fecaca;
+}
+
+.layer-context-menu-item.active {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.14);
 }
 
 .layer-context-menu-item:disabled {
@@ -1356,6 +1403,108 @@ button {
 .segmented-control input:disabled + span {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.option-number-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.option-number-control > input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  padding: 0 8px;
+}
+
+.option-number-control > input:focus {
+  border-color: rgba(94, 234, 212, 0.62);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.18);
+}
+
+.option-number-control > input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.option-number-control > input::-webkit-outer-spin-button,
+.option-number-control > input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.option-number-control > input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.option-unit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.option-unit-choice {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.option-unit-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.option-unit-choice span {
+  height: 28px;
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+}
+
+.option-unit-choice input:checked + span {
+  border-color: rgba(94, 234, 212, 0.52);
+  background: rgba(20, 49, 58, 0.86);
+  color: var(--text);
+}
+
+.option-unit-choice input:focus-visible + span {
+  border-color: rgba(94, 234, 212, 0.72);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.26);
+}
+
+.option-unit-choice input:disabled + span {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@container (max-width: 300px) {
+  .option-row-stack-narrow {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
 }
 
 .option-note {

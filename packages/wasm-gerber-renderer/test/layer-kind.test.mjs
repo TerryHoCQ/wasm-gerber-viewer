@@ -11,6 +11,7 @@ import { GerberRenderer } from "../index.js";
 import { fileLayer, NodeGerberRenderer } from "../node.js";
 import {
   createBaseFrameOptions,
+  isBoardOutlineLayerName,
   normalizeCompositeMode,
   normalizeLayerKind,
 } from "../shared.js";
@@ -131,6 +132,38 @@ test("renderDrills false skips drill sources before reading", async () => {
   assert.equal(nodeRecord, null);
 });
 
+test("node prepared layer rejects late inversion without retained source", async () => {
+  const renderer = new NodeGerberRenderer({}, makeParsedReuseWasmModule());
+  const prepared = await renderer.loadLayer(GERBER_CONTENT, { name: "mask.gbs" });
+
+  assert.equal(prepared.content, null);
+  await assert.rejects(
+    renderer.withFrame({}, async () => {
+      await renderer.renderLayer(prepared, { inverted: true });
+    }),
+    /Prepared layer cannot be inverted because its source content was not retained/,
+  );
+});
+
+test("node explicit prepared outline requires retained source", async () => {
+  const renderer = new NodeGerberRenderer({}, makeParsedReuseWasmModule());
+  const outline = await renderer.loadLayer(GERBER_CONTENT, { name: "routing.gbr" });
+  const mask = await renderer.loadLayer(GERBER_CONTENT, {
+    name: "mask.gbs",
+    inverted: true,
+  });
+
+  assert.equal(outline.content, null);
+  assert.equal(typeof mask.content, "string");
+  await assert.rejects(
+    renderer.withFrame({ invertedOutline: "routing.gbr" }, async () => {
+      await renderer.renderLayer(outline);
+      await renderer.renderLayer(mask);
+    }),
+    /Inverted outline layer requires source content: routing\.gbr/,
+  );
+});
+
 test("package composite mode defaults to blend and validates explicit values", () => {
   assert.equal(createBaseFrameOptions().compositeMode, "blend");
   assert.equal(createBaseFrameOptions({ compositeMode: "stack" }).compositeMode, "stack");
@@ -141,3 +174,160 @@ test("package composite mode defaults to blend and validates explicit values", (
     /compositeMode must be 'blend' or 'stack'/,
   );
 });
+
+test("package board outline detection accepts common outline names", () => {
+  assert.equal(isBoardOutlineLayerName("board.gko"), true);
+  assert.equal(isBoardOutlineLayerName("Edge.Cuts.gbr"), true);
+  assert.equal(isBoardOutlineLayerName("board-outline.gbr"), true);
+  assert.equal(isBoardOutlineLayerName("top-copper.gtl"), false);
+});
+
+test("node render plan preserves internal CLI outline selectors", async () => {
+  const selectorKey = "__wasmGerberRendererCliLayer:1";
+  const renderer = new NodeGerberRenderer({}, {});
+
+  await renderer.withFrame({ invertedOutline: selectorKey }, async () => {
+    renderer.frame.addLayer(makeNodeLayerRecord({
+      layerId: 0,
+      name: "outline.gko",
+      selectorKey,
+      bounds: { minX: 0, maxX: 10, minY: 0, maxY: 10 },
+    }));
+    renderer.frame.addLayer(makeNodeLayerRecord({
+      layerId: 1,
+      name: "mask.gbs",
+      inverted: true,
+      bounds: { minX: 100, maxX: 101, minY: 100, maxY: 101 },
+    }));
+  });
+
+  assert.equal(renderer.lastRenderPlan.layers[0].selectorKey, selectorKey);
+  assert.deepEqual(renderer.lastFrame.bounds, { minX: 0, maxX: 10, minY: 0, maxY: 10 });
+});
+
+test("node numeric outline selectors keep original input indices after skips", async () => {
+  const renderer = new NodeGerberRenderer({}, makeParsedReuseWasmModule());
+
+  await renderer.withFrame({ invertedOutline: 2, renderDrills: false }, async () => {
+    await renderer.renderLayers([
+      { source: DRILL_CONTENT, name: "holes.drl" },
+      { source: GERBER_CONTENT, name: "routing.gbr" },
+      { source: GERBER_CONTENT, name: "mask.gbs", inverted: true },
+    ]);
+  });
+
+  assert.equal(
+    renderer.lastRenderPlan.invertedOutline,
+    "__wasmGerberRendererCliLayer:2",
+  );
+  assert.equal(
+    renderer.lastRenderPlan.layers[0].selectorKey,
+    "__wasmGerberRendererCliLayer:2",
+  );
+  assert.equal(
+    renderer.lastRenderPlan.layers[1].selectorKey,
+    "__wasmGerberRendererCliLayer:3",
+  );
+});
+
+test("node numeric outline selectors include prior renderLayer calls", async () => {
+  const renderer = new NodeGerberRenderer({}, makeParsedReuseWasmModule());
+
+  await renderer.withFrame({ invertedOutline: 1 }, async () => {
+    await renderer.renderLayer({ source: GERBER_CONTENT, name: "routing.gbr" });
+    await renderer.renderLayers([
+      { source: GERBER_CONTENT, name: "mask.gbs", inverted: true },
+    ]);
+  });
+
+  assert.equal(
+    renderer.lastRenderPlan.invertedOutline,
+    "__wasmGerberRendererCliLayer:1",
+  );
+  assert.equal(
+    renderer.lastRenderPlan.layers[0].selectorKey,
+    "__wasmGerberRendererCliLayer:1",
+  );
+  assert.equal(
+    renderer.lastRenderPlan.layers[1].selectorKey,
+    "__wasmGerberRendererCliLayer:2",
+  );
+});
+
+test("node bounds inversion includes the target layer extents", async () => {
+  const renderer = new NodeGerberRenderer({}, {});
+
+  await renderer.withFrame({ invertedOutline: "bounds" }, async () => {
+    renderer.frame.addLayer(makeNodeLayerRecord({
+      layerId: 0,
+      name: "silk.gto",
+      bounds: { minX: 0, maxX: 10, minY: 0, maxY: 10 },
+    }));
+    renderer.frame.addLayer(makeNodeLayerRecord({
+      layerId: 1,
+      name: "mask.gbs",
+      inverted: true,
+      bounds: { minX: 100, maxX: 101, minY: 100, maxY: 101 },
+    }));
+  });
+
+  assert.deepEqual(renderer.lastFrame.bounds, { minX: 0, maxX: 101, minY: 0, maxY: 101 });
+});
+
+test("node auto outline inversion keeps fallback bounds in the frame", async () => {
+  const renderer = new NodeGerberRenderer({}, {});
+
+  await renderer.withFrame({}, async () => {
+    renderer.frame.addLayer(makeNodeLayerRecord({
+      layerId: 0,
+      name: "outline.gko",
+      bounds: { minX: 0, maxX: 10, minY: 0, maxY: 10 },
+    }));
+    renderer.frame.addLayer(makeNodeLayerRecord({
+      layerId: 1,
+      name: "mask.gbs",
+      inverted: true,
+      bounds: { minX: 100, maxX: 101, minY: 100, maxY: 101 },
+    }));
+  });
+
+  assert.deepEqual(renderer.lastFrame.bounds, { minX: 0, maxX: 101, minY: 0, maxY: 101 });
+});
+
+function makeNodeLayerRecord(overrides = {}) {
+  return {
+    kind: "gerber",
+    layerId: 0,
+    selectorKey: null,
+    name: "layer.gbr",
+    sourceName: "layer.gbr",
+    content: "synthetic",
+    parsedLayer: null,
+    parsedDrillLayer: null,
+    offsetX: 0,
+    offsetY: 0,
+    bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1 },
+    color: [1, 0, 0],
+    alpha: null,
+    inverted: false,
+    outlineStyle: null,
+    ...overrides,
+  };
+}
+
+function makeParsedReuseWasmModule() {
+  function GerberProcessor() {}
+  GerberProcessor.prototype.add_parsed_layer = function addParsedLayer() {};
+  return {
+    GerberProcessor,
+    parse_gerber_layer_with_options() {
+      return {
+        sublayers: [
+          {
+            boundary: { minX: 0, maxX: 1, minY: 0, maxY: 1 },
+          },
+        ],
+      };
+    },
+  };
+}

@@ -75,6 +75,7 @@ export function getViewerElements(documentRef = document) {
     clearDiagnosticsBtn: requireElement(documentRef, "clear-diagnostics-btn"),
     alphaSlider: requireElement(documentRef, "alpha-slider"),
     alphaValue: requireElement(documentRef, "alpha-value"),
+    boardOutlineSelect: requireElement(documentRef, "board-outline-select"),
     layerList: requireElement(documentRef, "layer-list"),
     diagnosticList: requireElement(documentRef, "diagnostic-list"),
     notification,
@@ -124,6 +125,18 @@ export function getViewerElements(documentRef = document) {
     minimumVisibility2Input: requireElement(
       documentRef,
       "minimum-visibility-2",
+    ),
+    boardOutlineBoundsMarginInput: requireElement(
+      documentRef,
+      "board-outline-bounds-margin",
+    ),
+    boardOutlineBoundsMarginUnitMmInput: requireElement(
+      documentRef,
+      "board-outline-bounds-margin-unit-mm",
+    ),
+    boardOutlineBoundsMarginUnitInchInput: requireElement(
+      documentRef,
+      "board-outline-bounds-margin-unit-inch",
     ),
     drillOutlineOffInput: requireElement(documentRef, "drill-outline-off"),
     drillOutline1Input: requireElement(documentRef, "drill-outline-1"),
