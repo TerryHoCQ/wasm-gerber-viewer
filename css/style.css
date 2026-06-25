@@ -743,7 +743,6 @@ button {
 
 .outline-source-status {
   display: block;
-  padding: 0 14px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -777,8 +776,7 @@ button {
   color: #f8fafc;
 }
 
-.side-panel.collapsed .outline-source-control,
-.side-panel.collapsed .outline-source-status {
+.side-panel.collapsed .outline-source-control {
   display: none;
 }
 
