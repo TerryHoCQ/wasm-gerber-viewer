@@ -98,6 +98,13 @@ High-level flow:
    `InteractionLayer` as a compact table payload instead of expanding feature
    metadata into JS objects.
 
+When `preserve_arc_regions` is enabled, regions that contain arcs stay in the
+path-region pipeline instead of being flattened into many line segments. The
+parser uses Lyon fill tessellation for these arc-containing regions and stores
+the filled triangles in `PathRegions.wedge_vertices`. The
+`arc_tessellation_quality` option controls the tessellation tolerance used for
+that conversion.
+
 ### 3. Drill Parsing
 
 Drill parsing lives in `wasm/src/drill.rs`.
@@ -127,6 +134,13 @@ Important types:
 - `Boundary`: min/max bounds.
 - `Lines`, `Circles`, `Arcs`, `Thermals`, `TriangleTemplateInstances`.
 - `PathRegions`: region/path based geometry.
+
+`PathRegions` is rendered with WebGL stencil state. `wedge_vertices` contains
+line-region fans and Lyon-filled arc-region triangles. `sector_vertices` is
+reserved for analytic sector path data. `cover_vertices` and `clear_vertices`
+define the quads used to apply and reset each stencil-filled region. Source
+contours may also be retained for interaction, outline, and inverted-layer
+workflows.
 
 `GerberData` supports JS render-payload conversion. This lets a worker, or a
 main-thread pre-parse helper, parse geometry outside the stateful renderer
@@ -314,6 +328,12 @@ phase-2 `add_interaction_payload()` on the interaction processor so CPU picking
 data is restored without a second source parse and without risking the render
 processor if picking data cannot be built.
 
+Layer FBOs are created with a stencil attachment when path-region geometry is
+present. Direct parsed layers detect this from `GerberData.path_regions`; render
+payload layers must make the same decision from decoded path-region metadata so
+worker-loaded path regions render identically. The renderer stores this flag on
+the layer so resize and context-recovery paths recreate the correct FBO type.
+
 ### 3. Render Call Stack
 
 JS usually calls one of these APIs:
@@ -390,6 +410,12 @@ Geometry types drawn in this pass:
 - thermals.
 - path regions.
 
+Path regions use a stencil pass inside the layer FBO. Region triangles and
+sector geometry write the stencil, cover geometry applies the positive or
+negative polarity to pixels whose stencil value is nonzero, and clear geometry
+resets the stencil before the next path region. Final layer color and alpha
+still remain deferred to the canvas composition pass.
+
 This pass is what prevents same-layer overlaps from changing color. The FBO is
 treated as the material mask for that user layer, not as the final colored
 image.
@@ -458,3 +484,7 @@ measurements after the WebGL render.
 - Final alpha must not be applied during the per-geometry layer pass.
 - Layer display policy should be implemented at the FBO composite stage, not in
   primitive drawing.
+- Lyon tessellation for preserved arc regions happens during parsing or render
+  payload construction, not on every render.
+- Render payload layers with path regions must keep stencil-FBO behavior in
+  parity with directly parsed layers.
