@@ -8,7 +8,10 @@ import {
   isNoGeometryError,
 } from "./file-utils.js";
 import { LayerFilterStore } from "./layer-filters.js";
-import { renderLayerList as renderLayerListView } from "./layer-list.js";
+import {
+  refreshLayerListInheritedAlpha,
+  renderLayerList as renderLayerListView,
+} from "./layer-list.js";
 import {
   drawMeasurementsOnContext,
   formatDimensionPair,
@@ -121,6 +124,19 @@ function isParseWorkerCapabilityErrorMessage(message) {
     normalizedMessage.includes("failed to fetch dynamically imported module") ||
     normalizedMessage.includes("wasm_gerber_processor")
   );
+}
+
+function clampAlpha(alpha) {
+  const value = Number(alpha);
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0, value));
+}
+
+function normalizeOptionalLayerAlpha(alpha) {
+  if (alpha === null || alpha === undefined) return null;
+  const value = Number(alpha);
+  if (!Number.isFinite(value)) return null;
+  return clampAlpha(value);
 }
 
 function isDrillSource(source) {
@@ -2101,6 +2117,7 @@ export class GerberViewer {
     this.compositeMode = mode;
     this.viewerOptionsStore.set("compositeMode", this.compositeMode);
     this.syncOptionControls();
+    this.renderLayerList();
     this.requestRender();
     this.updateUiState();
   }
@@ -2549,6 +2566,7 @@ export class GerberViewer {
             id: layer.id,
             visible: layer.visible,
             color: layer.color,
+            alpha: layer.alpha,
             inverted: layer.inverted,
             sourceContent: layer.sourceContent,
             offset: layer.offset,
@@ -4018,6 +4036,7 @@ export class GerberViewer {
       name: layer.name,
       visible: layer.visible,
       color: layer.color ? [...layer.color] : null,
+      alpha: normalizeOptionalLayerAlpha(layer.alpha),
       inverted: Boolean(layer.inverted),
       invertedLayerId: layer.invertedLayerId ?? null,
       invertedOutlineLayerId: layer.invertedOutlineLayerId ?? null,
@@ -4043,6 +4062,7 @@ export class GerberViewer {
       id: layer.id,
       visible: layer.visible,
       color: layer.color,
+      alpha: layer.alpha,
       inverted: layer.inverted,
       sourceContent: layer.sourceContent,
       offset: layer.offset,
@@ -4305,6 +4325,7 @@ export class GerberViewer {
       name: name,
       visible: options.visible ?? true,
       color: options.color ? [...options.color] : null,
+      alpha: normalizeOptionalLayerAlpha(options.alpha),
       inverted: options.inverted ?? false,
       invertedLayerId: options.invertedLayerId ?? null,
       invertedOutlineLayerId: options.invertedOutlineLayerId ?? null,
@@ -4351,6 +4372,7 @@ export class GerberViewer {
       ];
       this.nextColorIndex++;
     }
+    layer.alpha = normalizeOptionalLayerAlpha(layer.alpha);
     return layer;
   }
 
@@ -5115,12 +5137,11 @@ export class GerberViewer {
     const activeLayerIds = [];
     const colorData = [];
     const blendModes = [];
-    const alpha = this.getCompositeAlpha();
+    const defaultLayerAlpha = this.getCompositeAlpha();
     const isStack = this.isStackCompositeMode();
     const backgroundColor = this.isCanvasLight
       ? [248 / 255, 250 / 255, 252 / 255]
       : [2 / 255, 6 / 255, 23 / 255];
-    const drillAlpha = alpha > 0 ? 1 / alpha : 0;
 
     const gerberLayers = this.layers.filter(
       (layer) => !isDrillLayer(layer) && selectedLayerIds.has(layer.id),
@@ -5128,9 +5149,15 @@ export class GerberViewer {
     const orderedGerberLayers = isStack
       ? [...gerberLayers].reverse()
       : gerberLayers;
+    const drillLayerAlpha = 1;
     orderedGerberLayers.forEach((layer) => {
       activeLayerIds.push(this.getInvertedRenderLayerId(layer, selectedLayerIds));
-      colorData.push(layer.color[0], layer.color[1], layer.color[2], 1);
+      colorData.push(
+        layer.color[0],
+        layer.color[1],
+        layer.color[2],
+        this.resolveLayerAlpha(layer, defaultLayerAlpha),
+      );
       blendModes.push(isStack ? 1 : 0);
     });
 
@@ -5141,7 +5168,7 @@ export class GerberViewer {
           layer.color[0],
           layer.color[1],
           layer.color[2],
-          drillAlpha,
+          drillLayerAlpha,
         );
         blendModes.push(1);
       }
@@ -5154,7 +5181,7 @@ export class GerberViewer {
           backgroundColor[0],
           backgroundColor[1],
           backgroundColor[2],
-          drillAlpha,
+          drillLayerAlpha,
         );
         blendModes.push(1);
       }
@@ -5164,12 +5191,17 @@ export class GerberViewer {
       activeLayerIds: new Uint32Array(activeLayerIds),
       colorData: new Float32Array(colorData),
       blendModes: new Uint8Array(blendModes),
-      alpha,
+      alpha: 1,
     };
   }
 
   getCompositeAlpha() {
     return this.isStackCompositeMode() ? 1 : this.globalAlpha;
+  }
+
+  resolveLayerAlpha(layer, defaultAlpha = this.getCompositeAlpha()) {
+    const layerAlpha = normalizeOptionalLayerAlpha(layer?.alpha);
+    return layerAlpha === null ? clampAlpha(defaultAlpha) : layerAlpha;
   }
 
   renderMeasurements() {
@@ -6329,17 +6361,46 @@ export class GerberViewer {
     };
   }
 
-  updateLayerColor(layerId, hexColor) {
+  updateLayerColor(layerId, color, alpha = undefined) {
     const layer = this.layers.find((l) => l.id === layerId);
     if (!layer) return;
 
-    const r = parseInt(hexColor.substr(1, 2), 16) / 255;
-    const g = parseInt(hexColor.substr(3, 2), 16) / 255;
-    const b = parseInt(hexColor.substr(5, 2), 16) / 255;
-
-    layer.color = [r, g, b];
+    if (Array.isArray(color)) {
+      layer.color = color.slice(0, 3).map((channel) => {
+        const value = Number(channel);
+        return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+      });
+    } else {
+      const hexColor = String(color ?? "");
+      const r = parseInt(hexColor.substr(1, 2), 16) / 255;
+      const g = parseInt(hexColor.substr(3, 2), 16) / 255;
+      const b = parseInt(hexColor.substr(5, 2), 16) / 255;
+      layer.color = [r, g, b].map((channel) =>
+        Number.isFinite(channel) ? channel : 0,
+      );
+    }
+    if (!isDrillLayer(layer) && alpha !== undefined) {
+      layer.alpha = normalizeOptionalLayerAlpha(alpha);
+    }
     this.requestRender();
     this.updateUiState();
+  }
+
+  updateLayerAlphaOverride(layerId, alpha) {
+    const layer = this.layers.find((l) => l.id === layerId);
+    if (!layer || isDrillLayer(layer)) return;
+
+    layer.alpha = normalizeOptionalLayerAlpha(alpha);
+    this.requestRender();
+    this.updateUiState();
+  }
+
+  updateLayerAlpha(layerId, alpha) {
+    const layer = this.layers.find((l) => l.id === layerId);
+    if (!layer || isDrillLayer(layer)) return;
+
+    layer.alpha = clampAlpha(alpha);
+    this.requestRender();
   }
 
   updateLayerInverted(layer, inverted) {
@@ -6353,8 +6414,8 @@ export class GerberViewer {
   }
 
   updateGlobalAlpha(alpha) {
-    this.globalAlpha = alpha;
-    // Re-render with new alpha
+    this.globalAlpha = clampAlpha(alpha);
+    refreshLayerListInheritedAlpha(this.layerList);
     this.requestRender();
   }
 
@@ -6854,7 +6915,10 @@ export class GerberViewer {
       onDragStart: (event, layerId) =>
         this.handleLayerDragStart(event, layerId),
       onDragEnd: (event) => this.handleLayerDragEnd(event),
-      onColorChange: (layerId, color) => this.updateLayerColor(layerId, color),
+      onColorChange: (layerId, color, alpha) =>
+        this.updateLayerColor(layerId, color, alpha),
+      onAlphaOverrideChange: (layerId, alpha) =>
+        this.updateLayerAlphaOverride(layerId, alpha),
       onVisibilityChange: (layer, visible) => {
         layer.visible = visible;
         this.clearAllInvertedLayerCaches();
@@ -6871,6 +6935,7 @@ export class GerberViewer {
       },
       onContextMenu: (detail) => this.showLayerContextMenu(detail),
       onOpenFiles: () => this.openFilePicker(),
+      getGlobalAlpha: () => this.getCompositeAlpha(),
     });
     this.refreshIcons();
   }
