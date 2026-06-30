@@ -144,8 +144,19 @@ jobs:
 
       - name: Deploy GitHub Pages
         timeout-minutes: 5
+        continue-on-error: true
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Report GitHub Pages deployment queue timeout
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          {
+            echo "### GitHub Pages deployment"
+            echo ""
+            echo "GitHub Pages deployment did not leave \`deployment_queued\` before the timeout."
+            echo "The Pages artifact was prepared and uploaded successfully; Vercel deployment is handled separately."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
