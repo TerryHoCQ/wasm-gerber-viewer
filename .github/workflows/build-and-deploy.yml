@@ -89,15 +89,12 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: build
+    timeout-minutes: 10
 
     permissions:
       contents: read
       id-token: write
       pages: write
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +109,9 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Prepare GitHub Pages artifact
+        shell: bash
         run: |
+          set -euo pipefail
           pages_dir="${RUNNER_TEMP}/pages"
           mkdir -p "${pages_dir}/wasm"
 
@@ -120,12 +119,27 @@ jobs:
           cp -R css demo js vendor "${pages_dir}/"
           cp -R wasm/pkg "${pages_dir}/wasm/pkg"
 
+          {
+            echo "### GitHub Pages artifact"
+            echo ""
+            echo "- Size: $(du -sh "${pages_dir}" | cut -f1)"
+            echo "- Files: $(find "${pages_dir}" -type f | wc -l)"
+            echo ""
+            echo "Largest files:"
+            echo ""
+            echo '```'
+            find "${pages_dir}" -type f -printf '%s %p\n' | sort -nr | head -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload GitHub Pages artifact
+        timeout-minutes: 3
         uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ runner.temp }}/pages
 
       - name: Deploy GitHub Pages
+        timeout-minutes: 5
         id: deployment
         uses: actions/deploy-pages@v4
 
