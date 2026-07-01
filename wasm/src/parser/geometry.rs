@@ -1,11 +1,11 @@
+use crate::geometry::{Boundary, PathRegions, PATH_SECTOR_VERTEX_FLOATS};
+use crate::geometry::{RegionContour, RegionSegment};
 use crate::interaction::{
     aperture_name, aperture_type, feature_from_primitive_delta, FeatureKind, FeatureProperties,
     InteractionFeature, InteractionLayer, PathRegionRef,
 };
-use crate::parse_common::{parse_coordinate_number, parse_g_code, read_word_value};
+use crate::parser::common::{parse_coordinate_number, parse_g_code, read_word_value};
 use crate::parser::{Aperture, FormatSpec, ParserState, Polarity, PolarityLayer};
-use crate::region::{RegionContour, RegionSegment};
-use crate::shape::{Boundary, PathRegions, PATH_SECTOR_VERTEX_FLOATS};
 use crate::util::{format_bytes, format_count};
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
@@ -3221,36 +3221,4 @@ pub fn parse_graphic_command(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn canonical_arc_preserves_clamped_equal_radius_sweep() {
-        let arc = canonical_arc_geometry(
-            [1.0, 0.0],
-            [0.0, -1.0],
-            [0.0, 0.0],
-            1.0,
-            0.0,
-            std::f32::consts::PI / 2.0,
-            true,
-        );
-
-        assert!((arc.sweep_angle - std::f32::consts::PI / 2.0).abs() < 0.0001);
-    }
-
-    #[test]
-    fn canonical_arc_preserves_clamped_mismatched_radius_sweep() {
-        let arc = canonical_arc_geometry(
-            [1.0, 0.0],
-            [0.0, -1.2],
-            [0.0, 0.0],
-            1.0,
-            0.0,
-            std::f32::consts::PI / 2.0,
-            true,
-        );
-
-        assert!(arc.sweep_angle.abs() <= std::f32::consts::PI / 2.0 + 0.0001);
-    }
-}
+mod tests;
