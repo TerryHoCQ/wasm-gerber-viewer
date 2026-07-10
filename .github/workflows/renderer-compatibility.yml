@@ -7,16 +7,22 @@ on:
     paths:
       - ".github/workflows/renderer-compatibility.yml"
       - "demo/*.gbr"
+      - "demo/*.drl"
       - "packages/wasm-gerber-renderer/**"
+      - "scripts/assert-png-content.mjs"
       - "scripts/vercel-build.sh"
+      - "rust-toolchain.toml"
       - "wasm/**"
   pull_request:
     branches: ["main"]
     paths:
       - ".github/workflows/renderer-compatibility.yml"
       - "demo/*.gbr"
+      - "demo/*.drl"
       - "packages/wasm-gerber-renderer/**"
+      - "scripts/assert-png-content.mjs"
       - "scripts/vercel-build.sh"
+      - "rust-toolchain.toml"
       - "wasm/**"
 
 permissions:
@@ -68,14 +74,22 @@ jobs:
         include:
           - platform: Linux x64
             runner: ubuntu-latest
+            runtime_smoke: true
           - platform: Linux arm64
             runner: ubuntu-24.04-arm
+            runtime_smoke: true
           - platform: macOS arm64
             runner: macos-latest
+            runtime_smoke: true
+          - platform: macOS x64
+            runner: macos-15-intel
+            runtime_smoke: false
           - platform: Windows x64
             runner: windows-latest
+            runtime_smoke: true
           - platform: Windows arm64
             runner: windows-11-arm
+            runtime_smoke: true
 
     defaults:
       run:
@@ -114,6 +128,7 @@ jobs:
           npm install "$package_file" node-gles-webgl2@latest
 
       - name: Check native WebGL2 context
+        if: matrix.runtime_smoke != false
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/renderer-smoke"
@@ -154,6 +169,7 @@ jobs:
           NODE
 
       - name: Render through CLI
+        if: matrix.runtime_smoke != false
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/renderer-smoke"
@@ -169,33 +185,59 @@ jobs:
             --height 360 \
             --background '#05070c' \
             --alpha 1
-          node -e "const { statSync } = require('node:fs'); const size = statSync('out-cli.png').size; if (size < 100) throw new Error('CLI PNG output is unexpectedly small'); console.log('CLI PNG bytes:', size);"
+          node "${GITHUB_WORKSPACE}/scripts/assert-png-content.mjs" out-cli.png '#05070c' 100 640 360
 
       - name: Render through Node API
+        if: matrix.runtime_smoke != false
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/renderer-smoke"
           cat > smoke-node.mjs <<'NODE'
           import { fileLayer, renderGerberToPngBuffer } from "wasm-gerber-renderer/node";
+          import { writeFile } from "node:fs/promises";
           import { resolve } from "node:path";
 
           const png = await renderGerberToPngBuffer(
-            [fileLayer(resolve(process.env.GITHUB_WORKSPACE, "demo/gerber-feature-test.gbr"))],
+            [
+              fileLayer(resolve(process.env.GITHUB_WORKSPACE, "demo/gerber-feature-test.gbr")),
+              fileLayer(resolve(process.env.GITHUB_WORKSPACE, "demo/gerber-feature-test.gbr"), {
+                name: "inverted-mask.gbs",
+                inverted: true,
+                offsetX: 80,
+              }),
+              fileLayer(resolve(process.env.GITHUB_WORKSPACE, "demo/smoke-test.drl"), {
+                kind: "drill",
+                offsetX: 160,
+              }),
+            ],
             {
               width: 640,
               height: 360,
               background: "#ffffff",
               globalAlpha: 1,
+              invertedOutline: "bounds",
             },
           );
 
-          if (!(png instanceof Uint8Array) || png.length < 100) {
-            throw new Error("Node API PNG output is unexpectedly small");
-          }
-          console.log("Node API PNG bytes:", png.length);
+          if (!(png instanceof Uint8Array)) throw new Error("Node API did not return bytes");
+          await writeFile("out-node.png", png);
           NODE
           node_cmd=(node)
           if [[ "${RUNNER_OS}" == "Linux" ]]; then
             node_cmd=(xvfb-run -a node)
           fi
           "${node_cmd[@]}" smoke-node.mjs
+          node "${GITHUB_WORKSPACE}/scripts/assert-png-content.mjs" out-node.png '#ffffff' 100 640 360
+
+      - name: Validate build-only platform
+        if: matrix.runtime_smoke == false
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/renderer-smoke"
+          node <<'NODE'
+          const nodeGles = require("node-gles-webgl2");
+          if (typeof nodeGles.createWebGLRenderingContext !== "function") {
+            throw new Error("node-gles-webgl2 native module did not load");
+          }
+          console.log("Native module loaded; runtime smoke is unavailable on this hosted runner");
+          NODE

@@ -79,9 +79,9 @@ Node.js and CLI rendering are supported via
 | Windows x64   | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
 | Windows arm64 | ![tested](https://img.shields.io/badge/CI-tested-brightgreen)      |
 
-macOS x64 is included in the `node-gles-webgl2` support matrix, but the
-renderer compatibility workflow currently performs build-only validation for
-that platform.
+macOS x64 validates installation and native module loading only because the
+GitHub-hosted Intel runner cannot create the ANGLE EGL display required for
+runtime rendering.
 
 ## Browser Usage
 
@@ -193,13 +193,13 @@ rendering from the filesystem.
 
 - `renderGerberToCanvas(canvas, layers, frameOptions)`: one-shot batch render into an existing WebGL2-capable canvas. `layers` may be a single `GerberLayer`, an array, or a `FileList`. Failed layers are skipped by default.
 - `renderGerberToPng(canvas, layers, frameOptions, exportOptions)`: one-shot browser render that returns a PNG `Blob`.
-- `renderGerberToPngStream(canvas, writable, layers, frameOptions, exportOptions)`: one-shot browser render that writes PNG chunks to a `WritableStream` and closes it. Requires browser `CompressionStream` support.
+- `renderGerberToPngStream(canvas, writable, layers, frameOptions, exportOptions)`: one-shot browser render that writes PNG chunks to a `WritableStream`, closes it on success, and aborts it on failure. Requires browser `CompressionStream` support.
 - `createGerberRenderer(canvas, rendererOptions)`: creates a reusable renderer for multiple frames or layers.
 - `renderer.withFrame(frameOptions, callback)`: starts a frame, applies canvas/view options, runs the callback, and presents rendered layers after it resolves.
 - `renderer.renderLayer(layer, layerOptions)`: adds one layer to the active frame and returns its numeric layer ID. Must be called inside `withFrame()`. This strict API rejects on failure.
 - `renderer.renderLayers(layers, options)`: adds multiple layers and returns `{ renderedCount, failures }`. Failed layers are skipped by default; use `layerErrorMode: "throw"` for strict behavior.
 - `renderer.exportPng(exportOptions)`: exports the last browser frame as a PNG `Blob`.
-- `renderer.exportPngStream(writable, exportOptions)`: exports the last browser frame to a `WritableStream` and closes it without assembling a `Blob`.
+- `renderer.exportPngStream(writable, exportOptions)`: exports the last browser frame to a `WritableStream`, closing it on success or aborting it on failure, without assembling a `Blob`.
 - `renderer.dispose()`: releases the WebGL context.
 
 ## Node.js Usage
