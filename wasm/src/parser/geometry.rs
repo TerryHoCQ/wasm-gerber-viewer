@@ -1884,12 +1884,7 @@ fn calculate_arc_parameters(
     let start_angle = (start_y - center_y).atan2(start_x - center_x);
     let end_angle = (end_y - center_y).atan2(end_x - center_x);
     let is_full_circle = state.quadrant_mode != "single" && start_x == end_x && start_y == end_y;
-    let mut sweep_angle = normalize_arc_sweep(
-        start_angle,
-        end_angle,
-        is_clockwise,
-        is_full_circle,
-    );
+    let mut sweep_angle = normalize_arc_sweep(start_angle, end_angle, is_clockwise, is_full_circle);
 
     // Single-quadrant arcs cannot exceed 90 degrees. Keep legacy tolerance behavior.
     if state.quadrant_mode == "single"
