@@ -2341,6 +2341,31 @@ M02*",
 }
 
 #[test]
+fn micro_arc_with_endpoints_within_tolerance_is_not_treated_as_full_circle() {
+    let layers = parse_gerber(
+        "\
+%FSLAX26Y26*%
+%MOMM*%
+%ADD12C,0.300*%
+D12*
+G75*
+G03*
+X75200059Y9600000D02*
+X75200000Y9600000I-29J-50000D01*
+M02*",
+    )
+    .expect("micro-arc should parse");
+    let layer = &layers[0];
+
+    assert_eq!(layer.arcs.x.len(), 1);
+    assert!(
+        layer.arcs.sweep_angle[0].abs() < 0.01,
+        "micro-arc sweep must be small (~0.001 rad), got {}",
+        layer.arcs.sweep_angle[0]
+    );
+}
+
+#[test]
 fn full_circle_arc_requires_solid_standard_circle_aperture() {
     let layers = parse_gerber(
         "\
