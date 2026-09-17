@@ -1,6 +1,7 @@
 mod drill;
 mod geometry;
 mod interaction;
+mod odb;
 mod parser;
 mod renderer;
 mod util;
@@ -192,6 +193,23 @@ fn drill_parse_result_to_js(drill: DrillParseResult) -> Result<JsValue, JsValue>
         &drill.metadata.to_js()?,
     )?;
     Ok(object.into())
+}
+
+/// Decompress a UNIX `compress` (`.Z`) stream, the per-file compression many
+/// CAM tools apply to ODB++ `features` files. The output is capped at
+/// `max_output_bytes`; the viewer charges it to the archive byte budget.
+#[wasm_bindgen]
+pub fn decompress_unix_z(bytes: &[u8], max_output_bytes: usize) -> Result<Vec<u8>, JsValue> {
+    crate::odb::decompress_unix_z(bytes, max_output_bytes)
+        .map_err(|message| JsValue::from_str(&message))
+}
+
+/// Diagnostics of the most recent ODB++ layer parsed by this module instance
+/// ("Skipped or approximated: ..."), or `undefined` when there were none.
+/// Read it right after a parse or add call for an ODB++ layer envelope.
+#[wasm_bindgen]
+pub fn take_last_odb_diagnostics() -> Option<String> {
+    crate::odb::take_last_diagnostics()
 }
 
 #[wasm_bindgen]
