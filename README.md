@@ -190,6 +190,16 @@ this repository.
 
 </details>
 
+<details>
+<summary>Sample 4: Zaius EVT3 Motherboard (ODB++)</summary>
+
+- Project: [Zaius & Barreleye G2](https://github.com/opencomputeproject/zaius-barreleye-g2)
+- Copyright: Copyright International Business Machines Corporation 2015
+- License: [Open Compute Project Hardware License-Permissive (OCPHL-P) v1.0](https://raw.githubusercontent.com/opencomputeproject/zaius-barreleye-g2/master/license.md)
+- Archive: <https://media.githubusercontent.com/media/opencomputeproject/zaius-barreleye-g2/master/HW/EE/GBR/EVT/MB/Zaius-EVT3-LAYOUT-MB-ODB-X02-20161226-Final.zip>
+
+</details>
+
 ## License
 
 [MIT License](LICENSE)
