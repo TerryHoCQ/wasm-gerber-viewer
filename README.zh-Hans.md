@@ -31,7 +31,6 @@
 
 - 面向大型 Gerber 文件（10 MB 以上）优化的高性能渲染
 - 基于 WASM 与 WebGL2 的硬件加速渲染
-- 在支持 WebAssembly memory64 的浏览器中可加载超过 4 GiB 的图层数据
 - 支持 RS-274X Gerber 渲染
 - 支持 NC drill 叠加渲染
 - 支持导入 ODB++ 作业（`.zip`、`.tgz`、`.tar.gz`、`.tar`）
@@ -98,25 +97,14 @@ python -m http.server 8000
 - **Rust stable** - 使用 [rustup](https://rustup.rs/) 安装
 - **wasm-pack** - `cargo install wasm-pack`
 
+wasm32 构建输出到 `wasm/pkg`，memory64 构建输出到 `wasm/pkg64`。
+memory64 脚本会安装所需的构建工具。
+
 ```bash
 rustup target add wasm32-unknown-unknown
 wasm-pack build wasm --target web --out-dir pkg --release
-```
-
-### memory64 构建（可选）
-
-在支持 WebAssembly memory64 的浏览器中，查看器会为主实例加载 `wasm/pkg64`
-中的第二个构建。没有 `wasm/pkg64` 时，所有位置都使用 wasm32 构建。
-
-```bash
 ./scripts/build-wasm64.sh
 ```
-
-`wasm64-unknown-unknown` 没有预构建的标准库，因此脚本会安装固定日期的 nightly
-工具链和 `rust-src`，从源码构建 `std`，并运行与 `wasm/Cargo.lock` 版本一致的
-`wasm-bindgen` CLI。模块使用 binaryen 133 的 `wasm-opt` 优化；如果已安装的
-`wasm-opt` 不接受 memory64 模块（wasm-pack 自带的版本就是如此），脚本会自行
-下载。
 
 ## npm 包
 
@@ -172,44 +160,11 @@ wasm-gerber-viewer/
 
 ## 浏览器要求
 
-需要支持 WebGL2 和 WebAssembly SIMD 的现代浏览器。
+需要支持 WebGL2 和 WebAssembly SIMD。
 
-- Chrome 96+, Firefox 114+, Safari 16.4+, Edge 96+
-- iOS Chrome：iOS 16.4+（使用 WebKit，支持情况取决于 iOS 版本）
-
-### 超过 4 GiB 的内存
-
-在支持 WebAssembly memory64 的浏览器（Chrome 和 Edge 133+、Firefox 134+）中，
-保存所有已加载图层拾取数据的主实例会运行 memory64 构建，可以从 4 GiB 增长到约
-16 GiB。解析 worker 仍使用解析更快的 wasm32；只有当 wasm32 解析器因内存不足而
-失败时，该图层才会在 memory64 worker 中重新解析。Safari 和旧版浏览器与之前
-一样，全部运行 wasm32；在这些浏览器中打开需要超过 4 GiB 的文件时，查看器会提示
-浏览器不受支持，并列出可以打开该文件的浏览器。浏览器也可能在加载过程中关闭页面
-（iOS Safari 内存不足时会关闭页面再重新打开），重新打开的页面不会再次加载同一个
-`?url=`，而是说明发生了什么。
-
-| 浏览器 | 主实例 | 主实例内存上限 |
-|-|-|-|
-| Chrome、Edge 133+（桌面、Android） | memory64（解析 worker 为 wasm32） | 约 15.5 GiB |
-| Firefox 134+（桌面、Android） | memory64（解析 worker 为 wasm32） | 约 15.5 GiB |
-| Chrome、Edge 96–132，Firefox 114–133 | wasm32 | 约 3.5 GiB |
-| Safari 16.4+（macOS） | wasm32 | 约 3.5 GiB |
-| iPhone、iPad 上的所有浏览器（iOS 16.4+） | wasm32（均使用 WebKit） | 约 3.5 GiB；iOS 可能更早关闭页面 |
-
-上限是查看器停止接受新图层的位置，比引擎允许的大小（wasm32 为 4 GiB，memory64
-为 16 GiB）少 512 MiB；实际上设备内存可能先耗尽。在 `navigator.deviceMemory`
-报告小于 8 GiB 的设备上，memory64 上限会降到该值（不低于 3.5 GiB）。memory64 的
-支持版本依据 MDN 兼容性数据（`webassembly.memory64`）：Opera、Samsung Internet
-等基于 Chromium 133+ 的浏览器与 Chrome 相同，Safari 目前仅在 Technology Preview
-中支持 memory64。
-
-在查看器 URL 后加上 `?wasm=32` 或 `?wasm=64`，可以让所有实例都运行同一个构建。
-单个文件 300 MiB 的限制以及 WebGL 对单个缓冲区的限制保持不变。
-
-`demo/memory64-test-pads-24M.gbr` 是用于验证该行为的示例：15 KiB 的文件会展开为
-2400 万个焊盘，加载后主实例约占 5 GiB。加载它需要 16 GiB 机器的大部分内存，
-并且在 wasm32 下会失败。可用
-`node scripts/generate-memory64-sample.mjs [焊盘数（百万）]` 生成其他大小。
+- **64 位（memory64）**：Chrome、Edge 133+，Firefox 134+（桌面和 Android）。
+- **32 位（wasm32）**：Chrome、Edge 96–132，Firefox 114–133，Safari 16.4+；
+  iPhone、iPad 浏览器需要 iOS 16.4+。
 
 ## 示例来源
 
