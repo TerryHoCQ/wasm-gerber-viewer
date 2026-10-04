@@ -159,9 +159,16 @@ wasm-gerber-viewer/
 
 WebGL2 and WebAssembly SIMD are required.
 
-- **64-bit (memory64)**: Chrome/Edge 133+, Firefox 134+ (desktop and Android).
-- **32-bit (wasm32)**: Chrome/Edge 96–132, Firefox 114–133, Safari 16.4+;
-  iPhone/iPad browsers require iOS 16.4+.
+### 64-bit (memory64)
+
+- Chrome / Edge 133+
+- Firefox 134+
+
+### 32-bit (wasm32)
+
+- Chrome / Edge 96–132
+- Firefox 114–133
+- Safari 16.4+ / iPhone/iPad browsers: iOS 16.4+
 
 ## Source
 

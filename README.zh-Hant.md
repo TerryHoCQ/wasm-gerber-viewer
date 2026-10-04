@@ -162,9 +162,16 @@ wasm-gerber-viewer/
 
 需要支援 WebGL2 與 WebAssembly SIMD。
 
-- **64 位元（memory64）**：Chrome、Edge 133+，Firefox 134+（桌面與 Android）。
-- **32 位元（wasm32）**：Chrome、Edge 96–132，Firefox 114–133，Safari 16.4+；
-  iPhone、iPad 瀏覽器需要 iOS 16.4+。
+### 64 位元（memory64）
+
+- Chrome、Edge 133+
+- Firefox 134+
+
+### 32 位元（wasm32）
+
+- Chrome、Edge 96–132
+- Firefox 114–133
+- Safari 16.4+ / iPhone、iPad 瀏覽器：iOS 16.4+
 
 ## 範例來源
 

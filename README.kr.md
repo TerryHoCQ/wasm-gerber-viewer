@@ -162,9 +162,16 @@ wasm-gerber-viewer/
 
 WebGL2와 WebAssembly SIMD 지원이 필요합니다.
 
-- **64비트 (memory64)**: Chrome·Edge 133+, Firefox 134+ (데스크톱·Android).
-- **32비트 (wasm32)**: Chrome·Edge 96–132, Firefox 114–133, Safari 16.4+.
-  iPhone·iPad 브라우저는 iOS 16.4+가 필요합니다.
+### 64비트 (memory64)
+
+- Chrome·Edge 133+
+- Firefox 134+
+
+### 32비트 (wasm32)
+
+- Chrome·Edge 96–132
+- Firefox 114–133
+- Safari 16.4+ / iPhone·iPad 브라우저: iOS 16.4+
 
 ## 출처
 
