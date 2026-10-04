@@ -2,6 +2,7 @@ mod aperture;
 mod aperture_macro;
 pub(crate) mod common;
 pub mod geometry;
+pub(crate) mod simd_scan;
 mod state;
 
 // Export only what's needed externally
@@ -108,7 +109,7 @@ impl<'a> Iterator for CommandSplitter<'a> {
                 });
             }
 
-            return Some(match segment.find('*') {
+            return Some(match simd_scan::find_star_simd(segment.as_bytes()) {
                 Some(star) => {
                     self.rest = &segment[star + 1..];
                     &segment[..=star]
@@ -133,13 +134,30 @@ impl<'a> Iterator for CommandSplitter<'a> {
 /// an extended command holds several `*` (harmless over-reservation), and it
 /// falls short only for malformed input such as an empty `%%` command or a
 /// macro body line without `*`, which `push_command` absorbs.
+#[cfg(test)]
 fn count_commands(data: &str) -> usize {
+    let bytes = data.as_bytes();
+    let last_percent = simd_scan::rfind_byte_simd(bytes, b'%');
+
+    let (head, tail) = match last_percent {
+        None => (&bytes[..0], bytes),
+        Some(pos) => {
+            // Find the newline after the last '%', or the end of the file, so any trailing
+            // percent_only_line is resolved before the SIMD chunk scan.
+            let split_at = match bytes[pos + 1..].iter().position(|&b| b == b'\n') {
+                Some(nl) => (pos + 1 + nl + 1).min(bytes.len()),
+                None => bytes.len(),
+            };
+            (&bytes[..split_at], &bytes[split_at..])
+        }
+    };
+
     let mut count = 0usize;
     let mut at_line_start = true;
     let mut percent_only_line = false;
     let mut last_significant = None;
 
-    for byte in data.bytes() {
+    for &byte in head {
         match byte {
             b'*' => {
                 count += 1;
@@ -169,6 +187,17 @@ fn count_commands(data: &str) -> usize {
         last_significant = Some(byte);
     }
 
+    if !tail.is_empty() {
+        count += simd_scan::count_stars_simd(tail);
+        if let Some(&byte) = tail
+            .iter()
+            .rev()
+            .find(|&&b| !matches!(b, b'\n' | b' ' | b'\t' | b'\r'))
+        {
+            last_significant = Some(byte);
+        }
+    }
+
     if percent_only_line {
         count += 1;
     } else if matches!(last_significant, Some(byte) if byte != b'*' && byte != b'%') {
@@ -179,6 +208,7 @@ fn count_commands(data: &str) -> usize {
     count
 }
 
+#[cfg(test)]
 /// Index every command of the file, reserving the index buffer once up front
 /// from the single-pass estimate of `count_commands`.
 fn collect_commands(data: &str) -> Result<Vec<&str>, JsValue> {
@@ -193,6 +223,7 @@ fn collect_commands(data: &str) -> Result<Vec<&str>, JsValue> {
     Ok(commands)
 }
 
+#[cfg(test)]
 fn push_command<'a>(commands: &mut Vec<&'a str>, command: &'a str) -> Result<(), JsValue> {
     // For well-formed input the up-front reservation already holds every
     // command and this never allocates. It only grows for malformed input that
@@ -1032,15 +1063,12 @@ impl GerberParser {
             return self.finish_layers();
         }
 
-        let lines = collect_commands(data)?;
-        let length = lines.len();
-        let mut i = 0;
+        let mut commands_iter = split_commands(data);
 
-        while i < length {
-            let line_ref = lines[i].trim();
+        while let Some(raw_line) = commands_iter.next() {
+            let line_ref = raw_line.trim();
 
             if line_ref.is_empty() {
-                i += 1;
                 continue;
             }
 
@@ -1051,9 +1079,7 @@ impl GerberParser {
             } else if line_ref.starts_with('%') {
                 parse_command(
                     line_ref,
-                    &mut i,
-                    length,
-                    &lines,
+                    &mut commands_iter,
                     &mut self.current_state,
                     &mut self.apertures,
                     &mut self.macros,
@@ -1091,8 +1117,6 @@ impl GerberParser {
                 )
                 .map_err(|message| JsValue::from_str(&message))?;
             }
-
-            i += 1;
         }
 
         self.finish_layers()
@@ -1197,9 +1221,7 @@ impl GerberParser {
 
 fn parse_command(
     line_ref: &str,
-    i: &mut usize,
-    length: usize,
-    lines: &[&str],
+    commands_iter: &mut dyn Iterator<Item = &str>,
     state: &mut ParserState,
     apertures: &mut HashMap<String, Aperture>,
     macros: &mut HashMap<String, ApertureMacro>,
@@ -1215,17 +1237,15 @@ fn parse_command(
         let mut buffer = String::new();
         try_reserve_string(&mut buffer, line_ref.len(), "extended command buffer")?;
         buffer.push_str(line_ref);
-        *i += 1;
 
-        while *i < length {
-            let next_line = lines[*i].trim();
+        for next_raw in &mut *commands_iter {
+            let next_line = next_raw.trim();
             try_reserve_string(&mut buffer, next_line.len(), "extended command buffer")?;
             buffer.push_str(next_line);
 
             if next_line.ends_with('%') {
                 break;
             }
-            *i += 1;
         }
 
         buffer
@@ -1269,9 +1289,7 @@ fn parse_command(
         // Block Aperture: %ABD##*% ... %AB*%
         parse_aperture_block(
             &line,
-            i,
-            length,
-            lines,
+            commands_iter,
             state,
             apertures,
             macros,
@@ -1350,9 +1368,7 @@ fn is_aperture_block_close(line: &str) -> bool {
 
 fn parse_aperture_block(
     line: &str,
-    i: &mut usize,
-    length: usize,
-    lines: &[&str],
+    commands_iter: &mut dyn Iterator<Item = &str>,
     state: &mut ParserState,
     apertures: &mut HashMap<String, Aperture>,
     macros: &mut HashMap<String, ApertureMacro>,
@@ -1380,9 +1396,8 @@ fn parse_aperture_block(
     let mut block_layers: Vec<PolarityLayer> = Vec::new();
     let mut block_region_contours: Vec<RegionContour> = Vec::new();
 
-    while *i + 1 < length {
-        *i += 1;
-        let block_line = lines[*i].trim();
+    while let Some(raw_block_line) = commands_iter.next() {
+        let block_line = raw_block_line.trim();
 
         if block_line.is_empty() || block_line.starts_with("G04") {
             continue;
@@ -1396,9 +1411,7 @@ fn parse_aperture_block(
             let nested_block_state = parse_aperture_block_code(block_line).map(|_| state.clone());
             parse_command(
                 block_line,
-                i,
-                length,
-                lines,
+                commands_iter,
                 state,
                 apertures,
                 macros,
