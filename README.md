@@ -25,11 +25,13 @@ WASM/WebGL2-based Gerber file viewer for PCB visualization.
 - Performance test - Stars: [1K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fwasm-gerber-viewer.vercel.app%2Fdemo%2Fperformance-test-stars-1K.gbr), [10K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fwasm-gerber-viewer.vercel.app%2Fdemo%2Fperformance-test-stars-10K.gbr), [100K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-stars-100K.gbr), [1M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-stars-1M.gbr), [5M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-stars-1M.gbr&repeat=5&repeatOffsetX=70), [10M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-stars-1M.gbr&repeat=10&repeatOffsetX=70), [20M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-stars-1M.gbr&repeat=20&repeatOffsetX=70), [50M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-stars-1M.gbr&repeat=50&repeatOffsetX=0.007)
 - Performance test - Single region: [72K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fwasm-gerber-viewer.vercel.app%2Fdemo%2Fperformance-test-region-72K.gbr), [648K](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-region-648K.gbr), [1.8M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-region-1.8M.gbr)
 - Performance test - Arc region: [1.3M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fw2f6wchhvqyk5cap.public.blob.vercel-storage.com%2Fdemo%2Fperformance-test-arc-region-1.3M.gbr)
+- Memory64 test - Pads, uses more than 4 GiB of memory: [24M](https://wasm-gerber-viewer.vercel.app/?url=https%3A%2F%2Fwasm-gerber-viewer.vercel.app%2Fdemo%2Fmemory64-test-pads-24M.gbr)
 
 ## Features
 
 - High-performance rendering for large Gerber files (>10 MB)
 - WebGL2 hardware-accelerated rendering via WASM
+- More than 4 GiB of loaded layer data in browsers with WebAssembly memory64
 - RS-274X Gerber rendering support
 - NC drill overlay rendering support
 - ODB++ job import (`.zip`, `.tgz`, `.tar.gz`, `.tar`)
@@ -102,6 +104,23 @@ rustup target add wasm32-unknown-unknown
 wasm-pack build wasm --target web --out-dir pkg --release
 ```
 
+### memory64 build (optional)
+
+The viewer loads a second build from `wasm/pkg64` for its main instance in
+browsers with WebAssembly memory64. Without `wasm/pkg64` it runs the wasm32
+build everywhere.
+
+```bash
+./scripts/build-wasm64.sh
+```
+
+`wasm64-unknown-unknown` has no prebuilt standard library, so the script
+installs a date-pinned nightly toolchain with `rust-src`, builds `std` from
+source and runs the `wasm-bindgen` CLI that matches `wasm/Cargo.lock`. It
+optimizes the module with `wasm-opt` from binaryen 133, which it downloads
+when no installed `wasm-opt` accepts a memory64 module (the release bundled
+with wasm-pack does not).
+
 ## npm Package
 
 [wasm-gerber-renderer](packages/wasm-gerber-renderer/README.md)
@@ -133,7 +152,8 @@ wasm-gerber-viewer/
 ├── wasm/
 │   ├── Cargo.toml                     # Rust crate manifest
 │   ├── README.md                      # Rust/WASM pipeline notes
-│   ├── pkg/                           # Generated wasm-pack output
+│   ├── pkg/                           # Generated wasm-pack output (wasm32)
+│   ├── pkg64/                         # Generated memory64 build (scripts/build-wasm64.sh)
 │   └── src/
 │       ├── lib.rs                     # WASM API entry point
 │       ├── tests.rs                   # Crate-level tests
@@ -158,6 +178,44 @@ Modern browsers with WebGL2 and WebAssembly SIMD support:
 - Safari 16.4+
 - Edge 96+
 - Chrome for iOS: iOS 16.4+ (WebKit; support depends on the iOS version)
+
+### Memory beyond 4 GiB
+
+In browsers with WebAssembly memory64 (Chrome and Edge 133+, Firefox 134+) the
+viewer's main instance, which keeps the picking data of every loaded layer,
+runs the memory64 build and can grow to about 16 GiB instead of 4 GiB. Parse
+workers stay on wasm32 because it parses faster; a layer is parsed again in a
+memory64 worker only when the wasm32 parser runs out of memory on it. Safari
+and older browsers run wasm32 for everything, as before; when a file there
+needs more than 4 GiB, the viewer says so and lists the browsers that can load
+it. A browser may also close the page during such a load (iOS Safari does when
+it runs out of memory, then reopens it); the reopened page explains what
+happened instead of loading the same `?url=` again.
+
+| Browser | Main instance | Main-instance memory limit |
+|-|-|-|
+| Chrome, Edge 133+ (desktop, Android) | memory64 (parse workers wasm32) | about 15.5 GiB |
+| Firefox 134+ (desktop, Android) | memory64 (parse workers wasm32) | about 15.5 GiB |
+| Chrome, Edge 96–132, Firefox 114–133 | wasm32 | about 3.5 GiB |
+| Safari 16.4+ (macOS) | wasm32 | about 3.5 GiB |
+| Every browser on iPhone and iPad (iOS 16.4+) | wasm32 (all use WebKit) | about 3.5 GiB; iOS may close the page sooner |
+
+The limit is where the viewer stops accepting layers, 512 MiB short of what the
+engine allows (4 GiB for wasm32, 16 GiB for memory64); the device can run out
+of RAM first. Where `navigator.deviceMemory` reports less than 8 GiB, the
+memory64 limit drops to that value (never below 3.5 GiB). memory64 versions
+follow MDN's compatibility data (`webassembly.memory64`): other browsers on
+Chromium 133+, such as Opera and Samsung Internet, behave like Chrome, and
+Safari supports memory64 only in Technology Preview so far.
+
+Add `?wasm=32` or `?wasm=64` to the viewer URL to run every instance on one
+build. The 300 MiB limit per file and the WebGL limits on a single buffer are
+unchanged.
+
+`demo/memory64-test-pads-24M.gbr` is a sample that exercises this: a 15 KiB
+file that expands to 24 million pads and leaves the main instance at about
+5 GiB. Loading it takes most of a 16 GiB machine's RAM and fails on wasm32.
+`node scripts/generate-memory64-sample.mjs [million pads]` writes other sizes.
 
 ## Source
 
