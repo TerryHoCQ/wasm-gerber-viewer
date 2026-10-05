@@ -98,9 +98,6 @@ Requirements:
 - **Rust stable** - install with [rustup](https://rustup.rs/)
 - **wasm-pack** - `cargo install wasm-pack`
 
-Builds wasm32 in `wasm/pkg` and memory64 in `wasm/pkg64`. The memory64 script
-installs its required build tools.
-
 ```bash
 rustup target add wasm32-unknown-unknown
 wasm-pack build wasm --target web --out-dir pkg --release
