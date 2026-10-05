@@ -4,6 +4,62 @@ use super::*;
 #[path = "local_benchmarks.rs"]
 mod local_benchmarks;
 
+#[test]
+fn sr_template_fallback_accounts_for_every_raw_primitive() {
+    let mut apertures = HashMap::new();
+    crate::parser::aperture::parse_aperture(
+        "%ADD10R,1X1*%",
+        &mut apertures,
+        &HashMap::new(),
+        1.0,
+        true,
+    );
+    let aperture = &apertures["10"];
+    assert!(aperture.triangle_template.is_some());
+    assert_eq!(aperture.primitives.len(), 2);
+
+    for scale in [f32::EPSILON * 0.5, f32::EPSILON, 1.0] {
+        let mut state = ParserState::default();
+        state.current_aperture = "10".into();
+        state.layer_scale = scale;
+        state.sr_x = 2;
+        state.sr_y = 2;
+        state.sr_i = 1.0;
+        state.sr_j = 1.0;
+        let per_copy = if scale <= f32::EPSILON { 2 } else { 1 };
+        let expected_count = per_copy * 4;
+        let mut primitives = Vec::new();
+        flash_aperture(
+            &state,
+            &apertures,
+            &mut primitives,
+            &mut PathRegions::empty(),
+            &mut Vec::new(),
+            0.0,
+            0.0,
+        )
+        .unwrap();
+        assert_eq!(primitives.len(), expected_count);
+        assert_eq!(state.generated_items(), expected_count);
+
+        // Reject against the real expanded count before appending any copies.
+        state.set_generated_items(crate::parser::state::MAX_GENERATED_ITEMS - expected_count + 1);
+        let mut rejected = Vec::new();
+        let error = flash_aperture(
+            &state,
+            &apertures,
+            &mut rejected,
+            &mut PathRegions::empty(),
+            &mut Vec::new(),
+            0.0,
+            0.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("generated geometry exceeds"));
+        assert!(rejected.is_empty());
+    }
+}
+
 fn sr_circle_aperture() -> Aperture {
     let mut aperture = Aperture::new(0.005);
     aperture.primitives.push(Primitive::Circle {

@@ -1585,18 +1585,10 @@ pub fn flash_aperture(
             return Ok(());
         }
 
-        let additional = consume_expansion(
-            state,
-            aperture_flash_work_items(aperture)?,
-            repeat_count,
-            "aperture flash",
-        )?;
-
         // Keep the expanded representation and original copy order, but apply
         // aperture transforms only once. Negative apertures retain their old
         // world-space boolean path (translation can affect polygon rounding).
         if repeat_count > 1 && !aperture.has_negative {
-            try_reserve_primitives(primitives, additional, "aperture flash")?;
             // The common single-circle case needs no scratch allocation.
             let single = if let [primitive] = aperture.primitives.as_slice() {
                 let mut primitive = primitive.clone();
@@ -1623,6 +1615,16 @@ pub fn flash_aperture(
                 )?;
                 scratch.as_slice()
             };
+            // A stored template can fail to transform, leaving multiple raw
+            // primitives per copy. Account for and reserve the representation
+            // actually emitted, not the presence of the original template.
+            let additional = consume_expansion(
+                state,
+                transformed.len().max(1),
+                repeat_count,
+                "aperture flash",
+            )?;
+            try_reserve_primitives(primitives, additional, "aperture flash")?;
             for sy in 0..state.sr_y {
                 for sx in 0..state.sr_x {
                     let flash_x = x + sx as f32 * state.sr_i;
@@ -1634,6 +1636,13 @@ pub fn flash_aperture(
             }
             return Ok(());
         }
+
+        consume_expansion(
+            state,
+            aperture_flash_work_items(aperture)?,
+            repeat_count,
+            "aperture flash",
+        )?;
 
         // Step and Repeat iteration
         for sy in 0..state.sr_y {
